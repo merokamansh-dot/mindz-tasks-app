@@ -259,7 +259,7 @@ ${g}
 endstream`),r(d,()=>{l(`<< /Type /XObject /Subtype /Image /Width ${m.w} /Height ${m.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${m.jpeg.length} >>
 stream
 `),l(m.jpeg),l(`
-endstream`)})}),r(u,`<< /Title ${zg(t.title)} /Producer ${zg("MINDz Tasks")}${t.author?` /Author ${zg(t.author)}`:""} >>`);let c=o;l(`xref
+endstream`)})}),r(u,`<< /Title ${zg(t.title)} /Producer ${zg("Z CLOUD")}${t.author?` /Author ${zg(t.author)}`:""} >>`);let c=o;l(`xref
 0 ${s+1}
 0000000000 65535 f 
 `);for(let m=1;m<=s;m++)l(`${String(i[m]).padStart(10,"0")} 00000 n 
