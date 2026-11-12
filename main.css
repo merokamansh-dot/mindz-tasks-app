@@ -106,3 +106,20 @@
   .cc-body{padding:12px 12px 20px}
   .cc-code{font-size:1.35rem}
 }
+
+/* ===== Phone header ===== */
+@media (max-width:640px){
+  .topbar{gap:.3rem .6rem;padding:.4rem 12px;max-width:100%;box-sizing:border-box}
+  .topbar .home-link{padding:2px 6px;border-radius:10px}
+  .topbar .home-link svg,.topbar .home-link img{width:64px;height:auto;max-width:100%}
+  .topbar .brandname{font-size:.66rem;letter-spacing:.12em;padding-left:.5rem}
+  .topbar-mid{flex:1 1 0;min-width:0;gap:.45rem;font-size:.9rem}
+  .topbar-user{order:2;width:100%;margin-left:0;flex-wrap:wrap;gap:.3rem;min-width:0;margin-top:.15rem}
+  .topbar-user .who{order:-2;flex:1 1 calc(100% - 92px);min-width:0;font-size:.85rem;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar-user .btn,.topbar-user .cc-open{white-space:nowrap;min-height:34px;padding:.15rem .45rem;font-size:.76rem;line-height:1.2}
+  .topbar-user>button:not(.btn){min-height:32px;min-width:32px;padding:.1rem .35rem}
+  .topbar-user>button.btn:last-child{order:-1;margin-left:auto;flex:none}
+  .topbar-user .cc-open{margin-left:0}
+  .topnav{margin-top:.1rem}
+  .topnav button{padding:.3rem .75rem;min-height:32px}
+}
