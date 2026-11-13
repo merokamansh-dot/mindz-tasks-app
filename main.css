@@ -123,3 +123,9 @@
   .topnav{margin-top:.1rem}
   .topnav button{padding:.3rem .75rem;min-height:32px}
 }
+
+/* ===== Phone: appearance menu stays on screen ===== */
+@media (max-width:640px){
+  .theme-menu{position:static}
+  .theme-pop{right:12px;left:auto;top:calc(100% + 6px);width:min(280px,calc(100vw - 24px));min-width:0;box-sizing:border-box}
+}
