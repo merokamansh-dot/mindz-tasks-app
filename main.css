@@ -177,3 +177,6 @@
   .wt-days li{grid-template-columns:1fr auto;grid-template-areas:"d h" "m r"}
   .wt-d{grid-area:d}.wt-h{grid-area:h;text-align:right}.wt-m{grid-area:m;color:var(--muted)}.wt-r{grid-area:r}
 }
+
+/* ===== Dark header: no backdrop-filter (it made every dialog inside the header shrink to the header's size) ===== */
+:root[data-theme=dark] .topbar{background:#1c1c1e;-webkit-backdrop-filter:none;backdrop-filter:none}
