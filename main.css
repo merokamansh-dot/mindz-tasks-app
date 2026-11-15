@@ -221,3 +221,11 @@
 @media (max-width:640px){.sc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sc-panel{scroll-margin-top:96px}
 @media (max-width:640px){.sc-tap::after{content:" Swipe sideways to see all months."}}
+
+/* ===== Sales invoice (soft copy) on Won deals ===== */
+.sc-inv{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 10px;border:1px dashed var(--line);border-radius:10px}
+.sc-inv-l{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.sc-inv-files{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.sc-inv-files li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:.85rem;min-width:0}
+.sc-inv-files .file-name{overflow-wrap:anywhere;text-align:left}
+.sc-inv-c{grid-column:auto;border:0;padding:0;background:none;flex-direction:column;align-items:flex-start;gap:4px}
