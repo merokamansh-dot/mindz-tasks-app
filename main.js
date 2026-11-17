@@ -249,7 +249,7 @@ var ccx_PRESETS = [
   { k: "member", label: "Standard — all tabs", mods: [], desc: "Briefs, CRM, Expenses, HR (no Pricing)" },
   { k: "sales", label: "Sales Account Manager", mods: ["sales_am"], desc: "Briefs (own), CRM, own Sales deals, Expenses, HR" },
   { k: "sales_nocrm", label: "Sales AM (no CRM)", mods: ["sales_am", "no_crm"], desc: "Briefs (own), own Sales deals, Expenses, HR" },
-  { k: "ops", label: "Operations", mods: ["directory", "no_crm", "pricing", "quotations"], desc: "Standard + Directory, Pricing and Quotations, without CRM" },
+  { k: "ops", label: "Operations", mods: ["directory", "no_crm", "pricing"], desc: "Standard + Directory and Pricing, without CRM" },
   { k: "restricted", label: "Restricted (Briefs, Expenses, HR)", mods: ["restricted_nav", "no_crm"], desc: "Only Briefs, Expenses and HR" },
   { k: "commercial", label: "Commercial (Pricing + Quotes + Rate Card)", mods: ["pricing", "quotations", "ratecard"], desc: "Standard + Pricing, Quotations and Rate Card" },
 ];
