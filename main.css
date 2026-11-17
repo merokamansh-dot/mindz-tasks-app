@@ -229,3 +229,12 @@
 .sc-inv-files li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:.85rem;min-width:0}
 .sc-inv-files .file-name{overflow-wrap:anywhere;text-align:left}
 .sc-inv-c{grid-column:auto;border:0;padding:0;background:none;flex-direction:column;align-items:flex-start;gap:4px}
+
+/* linked brief card on a task */
+.tb-card{border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:12px;background:var(--card);padding:12px 14px;margin:12px 0}
+.tb-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tb-code{font-size:12px;font-weight:700;color:var(--brand);background:var(--brand-tint);border-radius:999px;padding:2px 9px}
+.tb-status{font-size:12px;color:var(--muted);margin-inline-start:auto}
+.tb-meta{margin:6px 0}
+.tb-card summary{cursor:pointer;font-weight:600;color:var(--brand);margin:4px 0}
+.tb-text{white-space:pre-wrap;word-break:break-word;font:inherit;font-size:13px;line-height:1.5;background:var(--brand-tint);border-radius:8px;padding:10px 12px;margin:6px 0;color:var(--ink)}
