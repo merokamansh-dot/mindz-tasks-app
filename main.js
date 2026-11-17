@@ -672,7 +672,7 @@ function CCMember(props) {
 function CCAccess(props) {
   var api = props.api, data = api.data, me = api.me;
   var s1 = la.useState({}), sel = s1[0], setSel = s1[1];
-  var s2 = la.useState("nopricing"), preset = s2[0], setPreset = s2[1];
+  var s2 = la.useState("member"), preset = s2[0], setPreset = s2[1];
   var s3 = la.useState("quotations"), perm = s3[0], setPerm = s3[1];
   var ids = Object.keys(sel).filter(function (k) { return sel[k]; });
   var allOn = data.members.length > 0 && ids.length === data.members.length;
