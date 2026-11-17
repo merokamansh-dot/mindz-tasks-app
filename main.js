@@ -1412,6 +1412,17 @@ function psDownload(name,text){
 }
 function psCsv(rows){return rows.map(function(r){return r.map(function(c){var t=String(c==null?"":c);return/[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(",")}).join("\n")}
 
+function PsSelect(p){
+  var h=ccx_h;
+  return h("label",{className:"ps-navsel"},h("span",{className:"sr"},p.label),
+    h("select",{"aria-label":p.label,value:p.value,onChange:function(e){p.onChange(e.target.value)}},p.options.map(function(o){return h("option",{key:o[0],value:o[0]},o[1])})));
+}
+function PsMenu(p){
+  var h=ccx_h;
+  return h("label",{className:"ps-navsel ps-menu"},h("span",{className:"sr"},p.label),
+    h("select",{"aria-label":p.label,value:"",onChange:function(e){var v=e.target.value;e.target.value="";if(v)p.onPick(v)}},
+      h("option",{value:""},p.label),p.options.map(function(o){return h("option",{key:o[0],value:o[0]},o[1])})));
+}
 function PsHead(p){
   var h=ccx_h;
   return h("div",{className:"ps-head"},h("div",null,h("h2",null,p.title),p.text&&h("p",{className:"hint"},p.text)),p.children&&h("div",{className:"ps-actions"},p.children));
@@ -1450,7 +1461,7 @@ function PerfSuite(){
     tab==="dev"?h(PsDev,{x:x}):null;
   return h("div",{className:"ps-suite"},
     h("div",{className:"hr-banner ps-notice",role:"note"},h("b",null,"Feedback, not payroll. "),PS_NOTICE),
-    h(Sl,{tabs:tabs,value:tab,onChange:pick,label:"Performance sections"}),
+    h(PsSelect,{options:tabs,value:tab,onChange:pick,label:"Performance section"}),
     d.error&&h(Kn,{message:d.error,onRetry:d.reload}),
     body,
     showThr&&h(PsThresholds,{x:x,onClose:function(){setShowThr(false)}}));
@@ -1515,8 +1526,7 @@ function PsOverview(p){
   ];
   return h("div",null,
     h(PsHead,{title:"Performance Overview",text:"How the team is performing against its targets."},
-      h("button",{type:"button",className:"btn",onClick:exportCsv},"Export report"),
-      x.isDir&&h("button",{type:"button",className:"btn",onClick:p.onThr},"Rating scale"),
+      h(PsMenu,{label:"More actions",options:[["export","Export report"]].concat(x.isDir?[["scale","Rating scale"]]:[]),onPick:function(v){if(v==="export")exportCsv();else p.onThr()}}),
       x.isDir&&h("button",{type:"button",className:"btn btn-primary",onClick:function(){x.openCard("new")}},"New scorecard")),
     h("div",{className:"ps-filters"},
       h(Gt,{value:flt.dept,onChange:function(v){set("dept",v)},options:x.depts,placeholder:"All departments",label:"Department"}),
@@ -1619,7 +1629,7 @@ function PsKpiLibrary(p){
   return h("div",null,
     h(PsHead,{title:"KPI Library",text:"Reusable measurements. A KPI here is a definition only; targets and weights are set per employee on a scorecard."},
       view==="kpis"?h("button",{type:"button",className:"btn btn-primary",onClick:function(){openForm(null)}},"New KPI"):h("button",{type:"button",className:"btn btn-primary",onClick:function(){setTpl({t:null})}},"New job template")),
-    h(Sl,{tabs:[["kpis","KPIs"],["templates","Job templates"]],value:view,onChange:setView,label:"KPI library views"}),
+    h(PsSelect,{options:[["kpis","KPIs"],["templates","Job templates"]],value:view,onChange:setView,label:"KPI library view"}),
     view==="kpis"?h(pt,null,
       h("div",{className:"ps-filters"},
         h("input",{type:"search","aria-label":"Search KPIs",placeholder:"Search KPIs…",value:flt.s,onChange:function(e){var v=e.target.value;setFlt(function(o){return Object.assign({},o,{s:v})})}}),
