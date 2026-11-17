@@ -244,3 +244,17 @@
 .tb-list li{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}
 .tb-list .tb-t{flex:1 1 180px;font-weight:600;overflow-wrap:anywhere}
 .tb-list .tb-s{font-size:12px;color:var(--muted);text-transform:capitalize}
+
+.db-card{max-width:920px;margin:18px auto;border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:14px;background:linear-gradient(135deg,var(--brand-tint),var(--card) 70%);padding:16px 18px;box-shadow:var(--shadow)}
+.db-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.db-badge{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--brand-dark);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.db-quote{margin:6px 0 12px;padding:0;border:0}
+.db-quote p{margin:0;font-size:1.15rem;line-height:1.45;font-weight:600;color:var(--ink)}
+.db-quote cite{display:block;margin-top:6px;font-size:13px;color:var(--muted);font-style:normal}
+.db-title{margin:10px 0 4px;font-size:1rem;color:var(--brand-dark)}
+.db-tip{margin:0 0 10px;line-height:1.55;color:var(--ink)}
+.db-action{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;background:var(--card);border:1px dashed var(--brand);border-radius:10px;padding:9px 12px;font-size:14px}
+.db-action b{color:var(--brand-dark)}
+.db-open{border-color:var(--brand);color:var(--brand-dark);white-space:nowrap;position:relative}
+.db-open.new::after{content:"";position:absolute;top:-3px;inset-inline-end:-3px;width:9px;height:9px;border-radius:50%;background:#e8590c;box-shadow:0 0 0 2px var(--card)}
+@media (max-width:600px){.db-card{margin:12px 12px;padding:14px}.db-quote p{font-size:1.05rem}}
