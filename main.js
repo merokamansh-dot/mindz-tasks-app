@@ -2163,8 +2163,8 @@ var Si=Ve(Pt(),1),LO=()=>{let e=/^#\/hr(?:\/([a-z]+))?/.exec(window.location.has
 /* ===== Z Cloud Mail tab: each person reads and sends from their own @mindz-agency.com mailbox (IMAP/SMTP through the `mail` edge function) ===== */
 var zmUnreadN=null,zmSubs=new Set();
 function zmSetUnread(n){zmUnreadN=n;zmSubs.forEach(function(f){f(n)})}
-async function zmCall(action,body){
-  var r=await ve.functions.invoke("mail",{body:Object.assign({action:action},body||{})});
+async function zmInvoke(fn,action,body){
+  var r=await ve.functions.invoke(fn,{body:Object.assign({action:action},body||{})});
   if(r.error){
     var msg="Mail is not reachable right now.",code="";
     try{var j=await r.error.context.json();msg=j.error||msg;code=j.code||""}catch(_){}
@@ -2172,6 +2172,7 @@ async function zmCall(action,body){
   }
   return r.data
 }
+function zmCall(action,body){return zmInvoke("mail",action,body)}
 var zmMon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function zmP2(n){return(n<10?"0":"")+n}
 function zmDate(iso,long){
@@ -2244,7 +2245,62 @@ function MailConnect(p){
       err?zmH("div",{className:"inline-error",role:"alert"},err):null,
       zmH("button",{className:"btn btn-primary btn-block",type:"submit",disabled:busy||!email||!pw},busy?"Connecting\u2026":"Connect mailbox"),
       zmH("p",{className:"zm-fine"},"Use the same email and password you use in Outlook. The password is stored encrypted on the company server and used only to open your own mailbox here. Nobody else in Z Cloud can see your mail. You can disconnect at any time.")
-    )))
+    ),
+    p.onAdmin?zmH("div",{className:"zm-admlink"},zmH("button",{className:"btn btn-sm",type:"button",onClick:p.onAdmin},"\u{1F465} Set up the team\u2019s mailboxes")):null))
+}
+
+function MailPwChange(p){
+  var toast=ia(),s=bi.useState(""),pw=s[0],setPw=s[1],b=bi.useState(false),busy=b[0],setBusy=b[1],e=bi.useState(""),err=e[0],setErr=e[1];
+  async function go(ev){ev.preventDefault();if(busy||!pw)return;setBusy(true);setErr("");
+    try{await zmCall("connect",{email:p.email,password:pw});setPw("");toast.push("success","Mailbox password updated.")}catch(x){setErr(x.message)}finally{setBusy(false)}}
+  return zmH("form",{onSubmit:go,className:"zm-pw"},
+    zmH("label",null,"Changed your mailbox password? Enter the new one",zmH("input",{type:"password",value:pw,onChange:function(ev){setPw(ev.target.value)},autoComplete:"new-password"})),
+    err?zmH("div",{className:"inline-error",role:"alert"},err):null,
+    zmH("button",{className:"btn btn-sm",type:"submit",disabled:busy||!pw},busy?"Checking\u2026":"Update password"))
+}
+
+function MailAdmin(p){
+  var toast=ia(),sR=bi.useState(null),rows=sR[0],setRows=sR[1],sD=bi.useState({}),drafts=sD[0],setDrafts=sD[1],sB=bi.useState({}),busy=sB[0],setBusy=sB[1],sM=bi.useState({}),res=sM[0],setRes=sM[1],sE=bi.useState(""),err=sE[0],setErr=sE[1],sA=bi.useState(false),all=sA[0],setAll=sA[1];
+  var load=bi.useCallback(async function(){try{var r=await zmInvoke("mail-admin","list");setRows(r.members);setErr("")}catch(e){setErr(e.message)}},[]);
+  bi.useEffect(function(){load()},[]);
+  function dv(m){var d=drafts[m.user_id]||{};return{email:d.email!=null?d.email:(m.mailbox||m.login_email||""),pw:d.pw||""}}
+  function upd(id,k,v){setDrafts(function(o){var n=Object.assign({},o),x=Object.assign({},o[id]);x[k]=v;n[id]=x;return n})}
+  async function save(m,quiet){
+    var d=dv(m);if(!d.pw||busy[m.user_id])return false;
+    setBusy(function(b){var n=Object.assign({},b);n[m.user_id]=true;return n});setRes(function(r){var n=Object.assign({},r);delete n[m.user_id];return n});
+    var ok=false;
+    try{
+      var r=await zmInvoke("mail-admin","set",{user_id:m.user_id,email:d.email.trim(),password:d.pw});ok=true;
+      upd(m.user_id,"pw","");
+      setRes(function(o){var n=Object.assign({},o);n[m.user_id]={ok:true,text:r.smtp===false?"Opens, but sending is not working yet. Check with IT.":"Connected"};return n});
+      if(m.user_id===p.me)window.dispatchEvent(new Event("zm-connected"));
+      if(!quiet)toast.push("success",(m.name||d.email)+": mailbox connected.")
+    }catch(e){setRes(function(o){var n=Object.assign({},o);n[m.user_id]={ok:false,text:e.message};return n})}
+    finally{setBusy(function(b){var n=Object.assign({},b);n[m.user_id]=false;return n})}
+    return ok
+  }
+  async function saveAll(){
+    setAll(true);var n=0;
+    for(var i=0;i<rows.length;i++){if(dv(rows[i]).pw){if(await save(rows[i],true))n++}}
+    setAll(false);await load();if(n)toast.push("success",n+" mailbox"+(n===1?"":"es")+" connected.")
+  }
+  var filled=rows?rows.filter(function(m){return dv(m).pw}).length:0;
+  return zmH("main",{className:"content"},zmH("div",{className:"zm-adm"},
+    zmH("div",{className:"zm-admhead"},zmH("button",{className:"btn btn-sm",onClick:p.onBack},"\u2039 Back to Mail"),zmH("h1",null,"Team mailboxes")),
+    zmH("p",{className:"zm-sub"},"Enter each person\u2019s company email and its mailbox password once. Mail then opens automatically for them inside Z Cloud. Each person can change their own password later from Mail \u2192 Settings."),
+    zmH("p",{className:"zm-fine"},"Passwords are checked against the mail server, stored encrypted, and never shown again. Not even you can read them back."),
+    err?zmH("div",{className:"inline-error",role:"alert"},zmH("span",null,err),zmH("button",{className:"btn btn-sm",onClick:load},"Retry")):null,
+    !rows&&!err?zmH("div",{className:"zm-empty"},"Loading\u2026"):null,
+    rows?zmH("div",{className:"zm-arows"},rows.map(function(m){
+      var d=dv(m),r=res[m.user_id],st=m.mailbox?(m.needs_reconnect?{c:"warn",t:"Needs new password"}:{c:"ok",t:"Connected"}):{c:"off",t:"Not set up"};
+      return zmH("form",{key:m.user_id,className:"zm-arow",onSubmit:function(e){e.preventDefault();save(m)}},
+        zmH("div",{className:"zm-aname"},zmH("b",null,m.name||m.login_email||"Member"),zmH("span",{className:"zm-st "+st.c},st.t),m.role==="director"?zmH("span",{className:"zm-fine"},"Director"):null),
+        zmH("input",{type:"email",value:d.email,onChange:function(e){upd(m.user_id,"email",e.target.value)},placeholder:"name@mindz-agency.com","aria-label":"Mailbox email for "+m.name,autoComplete:"off",dir:"ltr"}),
+        zmH("input",{type:"password",value:d.pw,onChange:function(e){upd(m.user_id,"pw",e.target.value)},placeholder:m.mailbox?"New password":"Mailbox password","aria-label":"Mailbox password for "+m.name,autoComplete:"new-password"}),
+        zmH("button",{className:"btn btn-sm btn-primary",type:"submit",disabled:!d.pw||!d.email||!!busy[m.user_id]||all},busy[m.user_id]?"Checking\u2026":"Save"),
+        r?zmH("div",{className:r.ok?"zm-ok":"inline-error",role:r.ok?"status":"alert"},r.text):null)
+    })):null,
+    rows&&rows.length>1?zmH("div",{className:"zm-allrow"},zmH("button",{className:"btn btn-primary",onClick:saveAll,disabled:!filled||all},all?"Saving\u2026":"Save all filled rows"+(filled?" ("+filled+")":""))):null))
 }
 
 function MailCompose(p){
@@ -2436,6 +2492,8 @@ function MailBox(p){
       zmH("button",{className:"zm-mini",onClick:function(){setSettings(function(v){return!v})},"aria-expanded":settings},"\u2699\uFE0F Settings")),
     settings?zmH("div",{className:"zm-set"},
       zmH("label",null,"Signature (added to new messages)",zmH("textarea",{value:sig,onChange:function(e){saveSig(e.target.value)},rows:4,dir:"auto"})),
+      zmH(MailPwChange,{email:p.acct.email}),
+      p.onAdmin?zmH("button",{className:"btn btn-sm",onClick:p.onAdmin},"\u{1F465} Team mailboxes"):null,
       zmH("button",{className:"btn btn-sm btn-danger",onClick:disconnect},"Disconnect mailbox"),
       zmH("p",{className:"zm-fine"},"Disconnecting removes your saved password from Z Cloud. Your emails stay on the mail server.")):null);
 
@@ -2499,10 +2557,13 @@ function MailBox(p){
 function MailApp(){
   var s=bi.useState(undefined),acct=s[0],setAcct=s[1],auth=ba(),me=auth.session&&auth.session.user&&auth.session.user.id;
   var load=bi.useCallback(async function(){try{var r=await ve.from("mail_accounts").select("email,auth_failed").maybeSingle();setAcct(r.data||null)}catch(_){setAcct(null)}},[]);
-  bi.useEffect(function(){load()},[]);
+  var sAd=bi.useState(false),isAdmin=sAd[0],setIsAdmin=sAd[1],sSh=bi.useState(false),admin=sSh[0],setAdmin=sSh[1];
+  bi.useEffect(function(){load();zmInvoke("mail-admin","list").then(function(){setIsAdmin(true)}).catch(function(){})},[]);
+  if(admin)return zmH(MailAdmin,{me:me,onBack:function(){setAdmin(false);load()}});
+  var openAdmin=isAdmin?function(){setAdmin(true)}:null;
   if(acct===undefined)return zmH("main",{className:"content"},zmH("div",{className:"zm-empty"},"Loading\u2026"));
-  if(!acct||acct.auth_failed)return zmH(MailConnect,{acct:acct,onDone:load});
-  return zmH(MailBox,{acct:acct,me:me,onDisconnected:function(){setAcct(null)},onAuthLost:function(){setAcct(function(a){return Object.assign({},a,{auth_failed:true})})}})
+  if(!acct||acct.auth_failed)return zmH(MailConnect,{acct:acct,onDone:load,onAdmin:openAdmin});
+  return zmH(MailBox,{acct:acct,me:me,onAdmin:openAdmin,onDisconnected:function(){setAcct(null)},onAuthLost:function(){setAcct(function(a){return Object.assign({},a,{auth_failed:true})})}})
 }
 
 /*MAIL_END*/
