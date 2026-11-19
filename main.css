@@ -458,3 +458,4 @@
 .zm-ok{color:#0a7a3d;font-size:13px}
 .zm-allrow{margin-top:14px;display:flex;justify-content:flex-end}
 @media (max-width:700px){.zm-arow{grid-template-columns:1fr}.zm-allrow{justify-content:stretch}.zm-allrow .btn{width:100%}}
+.zm-host{display:block}
