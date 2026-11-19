@@ -1,8 +1,34 @@
 // Z CLOUD service worker. It does two things only: show push alerts and open the right screen when one is tapped.
-// It caches nothing, so the app always loads the newest version.
+// It also keeps a copy of each released app bundle (main.js / main.css, addressed by their ?v=<release> URL), so opening Z CLOUD
+// is instant after the first time. Every other request goes straight to the network. The page re-checks each bundle against
+// the SHA-256 published in Supabase before running it, so a cached copy can never run unless it is exactly the released one.
 self.addEventListener('install', () => self.skipWaiting())
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
-self.addEventListener('fetch', () => {})   // browsers only offer "Install app" when a fetch handler exists; we let every request go to the network
+self.addEventListener('activate', (e) => e.waitUntil((async () => {
+  await self.clients.claim()
+  try { for (const k of await caches.keys()) if (k !== BUNDLES) await caches.delete(k) } catch (err) { /* ignore */ }
+})()))
+
+const BUNDLES = 'zc-bundles-1', KEEP = 6
+const isBundle = (req) => {
+  if (req.method !== 'GET') return false
+  const u = new URL(req.url)
+  return u.origin === self.location.origin && /\/main\.(js|css)$/.test(u.pathname) && u.searchParams.has('v')
+}
+async function bundleFirst(req) {
+  const c = await caches.open(BUNDLES)
+  const hit = await c.match(req)
+  if (hit) return hit
+  const res = await fetch(req)
+  if (res.ok && res.type === 'basic') {
+    await c.put(req, res.clone())
+    const keys = await c.keys()
+    for (const k of keys.slice(0, Math.max(0, keys.length - KEEP))) await c.delete(k)
+  }
+  return res
+}
+self.addEventListener('fetch', (e) => {   // browsers only offer "Install app" when a fetch handler exists
+  if (isBundle(e.request)) e.respondWith(bundleFirst(e.request).catch(() => fetch(e.request)))
+})
 
 const hashOf = (u) => (typeof u === 'string' && /^#\/[\w\/-]{0,80}$/.test(u) ? u : '#/')
 
