@@ -619,3 +619,4 @@ button.hh-kpi:hover{transform:translateY(-2px);border-color:var(--brand)}
 @media (prefers-reduced-motion:reduce){.hh-mascot{animation:none}.hh *{transition:none!important}}
 :root[data-theme=dark] .hh-tile:hover{box-shadow:none}
 :root[data-theme=dark] .hh-hero{box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.ops-embed{margin:0;max-width:none}.ops-embed .page-head{margin-top:4px}.ops-embed .ph-mascot{display:none}
