@@ -625,3 +625,6 @@ button.hh-kpi:hover{transform:translateY(-2px);border-color:var(--brand)}
 .qe-theme.t-sand i{background:linear-gradient(#DFD9C8,#DFD9C8);position:relative;height:38px;border-radius:0}
 .qe-theme.t-sand i:before{content:"";position:absolute;left:0;right:0;top:0;height:24px;background:#0D5FB3;border-radius:0 0 50% 50%/0 0 14px 14px;box-shadow:0 3px 0 #FCFF59}
 .qe-theme.t-night i{background:#020F22;border-bottom:4px solid #FCFF59}
+
+.qe-theme.t-volt i{background:#FCFF59;border-bottom:4px solid #000}
+.qe-theme.t-cube i{background:linear-gradient(90deg,#FCFF59 0 9px,#020F22 9px 18px,#fff 18px);border-bottom:4px solid #0D5FB3}
