@@ -620,3 +620,8 @@ button.hh-kpi:hover{transform:translateY(-2px);border-color:var(--brand)}
 :root[data-theme=dark] .hh-tile:hover{box-shadow:none}
 :root[data-theme=dark] .hh-hero{box-shadow:0 0 0 1px rgba(255,255,255,.08)}
 .ops-embed{margin:0;max-width:none}.ops-embed .page-head{margin-top:4px}.ops-embed .ph-mascot{display:none}
+
+.qe-theme.t-arc i{background:#fff url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 34'%3E%3Cg fill='none'%3E%3Ccircle cx='78' cy='34' r='26' stroke='%230D5FB3' stroke-width='3'/%3E%3Ccircle cx='78' cy='34' r='33' stroke='%23FCFF59' stroke-width='2.5'/%3E%3C/g%3E%3C/svg%3E") no-repeat right bottom/auto 100%;border:1px solid #d9e0ea;border-bottom:3px solid #0D5FB3}
+.qe-theme.t-sand i{background:linear-gradient(#DFD9C8,#DFD9C8);position:relative;height:38px;border-radius:0}
+.qe-theme.t-sand i:before{content:"";position:absolute;left:0;right:0;top:0;height:24px;background:#0D5FB3;border-radius:0 0 50% 50%/0 0 14px 14px;box-shadow:0 3px 0 #FCFF59}
+.qe-theme.t-night i{background:#020F22;border-bottom:4px solid #FCFF59}
