@@ -115,6 +115,8 @@
     var r = c.sort(function (x, y) { return sc(y) - sc(x) }), f = r.filter(function (v) { return sc(v) > -4 })
     return f.length ? f : r
   }
+  var told = {}
+  function notice(t) { if (told[t]) return; told[t] = 1; addMsg('assistant', t, true) }
   function pickVoice() {
     var c = voiceList(), saved = ''
     try { saved = localStorage.getItem('nour_voice_' + L.lang) || '' } catch (e) {}
@@ -137,19 +139,28 @@
       a.play().then(function () { tick() }).catch(function () { res() })
     })
   }
+  function ttsOK() { return !!(window.speechSynthesis && typeof window.SpeechSynthesisUtterance !== 'undefined') }
   function speakBrowser(text) {
     return new Promise(function (res) {
-      if (!window.speechSynthesis) return res()
-      var v = pickVoice(), parts = String(text).match(/[^.!؟?\n]+[.!؟?]*/g) || [String(text)], n = 0, fin = false
+      if (!ttsOK()) { notice(L.lang === 'ar' ? 'الصوت مش مدعوم في التطبيق ده، فهرد عليك كتابة. جرّب Chrome لو عايزني أتكلم.' : 'Spoken replies are not supported in this app. Try Chrome for voice.'); return res() }
+      var v = pickVoice(), parts = String(text).match(/[^.!؟?\n]+[.!؟?]*/g) || [String(text)], n = 0, fin = false, began = false
       parts = parts.map(function (x) { return x.trim() }).filter(Boolean)
-      function done() { if (fin) return; fin = true; clearTimeout(guard); clearInterval(L.mouthT); setMouth(0); res() }
+      function done() { if (fin) return; fin = true; clearTimeout(guard); clearTimeout(start); clearInterval(L.mouthT); setMouth(0); res() }
       var guard = setTimeout(done, 6000 + text.length * 120)
+      // if nothing starts within 4 s the device has no usable voice (or blocked it): say so instead of staying silent
+      var start = setTimeout(function () {
+        if (began) return
+        try { speechSynthesis.cancel() } catch (e) {}
+        notice(L.lang === 'ar' ? 'جهازك مش بيشغّل صوت لنور. تأكد إن الصوت مش مكتوم وإن في محرك نطق عربي (Settings ← Text-to-speech). لحد ما يشتغل هرد عليك كتابة.' : 'This device is not playing her voice. Check the volume and that a text-to-speech engine with this language is installed. Replies stay in text.')
+        done()
+      }, 4000)
       if (!parts.length) return done()
-      parts.forEach(function (t, i) {
+      parts.forEach(function (t) {
         var u = new SpeechSynthesisUtterance(t); if (v) { u.voice = v; u.lang = v.lang } else u.lang = L.lang === 'ar' ? 'ar-EG' : 'en-US'
         u.rate = 0.97; u.pitch = 1.08
-        u.onstart = function () { clearInterval(L.mouthT); L.mouthT = setInterval(function () { setMouth(0.15 + Math.random() * 0.75) }, 110) }
-        u.onend = u.onerror = function () { if (++n >= parts.length) done() }
+        u.onstart = function () { began = true; clearInterval(L.mouthT); L.mouthT = setInterval(function () { setMouth(0.15 + Math.random() * 0.75) }, 110) }
+        u.onend = function () { if (++n >= parts.length) done() }
+        u.onerror = function (e) { began = true; var er = e && e.error; if (er && er !== 'canceled' && er !== 'interrupted') notice((L.lang === 'ar' ? 'الصوت وقف (' : 'Voice stopped (') + er + (L.lang === 'ar' ? '). غالباً مفيش محرك نطق عربي على الجهاز.' : ').')); if (++n >= parts.length) done() }
         speechSynthesis.speak(u)
       })
     })
@@ -172,7 +183,12 @@
     var finalText = '', box = document.getElementById('nin')
     rc.onstart = function () { setState('listening') }
     rc.onresult = function (e) { var t = ''; for (var i = e.resultIndex; i < e.results.length; i++) { t += e.results[i][0].transcript; if (e.results[i].isFinal) finalText = t } if (box) box.value = t }
-    rc.onerror = function () { setState('idle') }
+    rc.onerror = function (e) {
+      setState('idle'); var er = e && e.error
+      if (er === 'not-allowed' || er === 'service-not-allowed') { L.live = false; notice(L.lang === 'ar' ? 'الميكروفون مش مسموح. اسمح للتطبيق أو المتصفح بالميكروفون من إعدادات الجهاز، أو اكتب رسالتك.' : 'Microphone is blocked. Allow microphone access in your device settings, or type your message.') }
+      else if (er === 'audio-capture') { L.live = false; notice(L.lang === 'ar' ? 'مش لاقية ميكروفون شغال على الجهاز.' : 'No working microphone found.') }
+      else if (er === 'network' || er === 'language-not-supported') { L.live = false; notice(L.lang === 'ar' ? 'التعرف على الصوت مش متاح دلوقتي (محتاج إنترنت). اكتب رسالتك.' : 'Speech recognition is not available right now. Please type.') }
+    }
     rc.onend = function () { L.rec = null; if (box) box.value = ''; setState('idle'); if (finalText.trim()) handle(finalText.trim()); else if (L.live && L.started && tab === 'chat') setTimeout(listen, 700) }
     try { rc.start() } catch (e) { setState('idle') }
   }
@@ -291,7 +307,7 @@
     chat.forEach(function (c) { list.appendChild(h('div', { class: 'm ' + (c.role === 'user' ? 'u' : c.sys ? 'sys' : 'n'), dir: 'auto' }, c.content)) })
     function go() { var t = inp.value.trim(); if (!t) return; inp.value = ''; if (!L.started) { L.started = true; startWatch() } handle(t) }
     send.addEventListener('click', go); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go() } })
-    mic.addEventListener('click', function () { if (!SR) { addMsg('assistant', 'This browser has no voice input. Use Chrome or Edge.', true); return } L.started = true; startWatch(); if (L.state === 'listening') stopListening(); else listen() })
+    mic.addEventListener('click', function () { if (!SR) { notice(L.lang === 'ar' ? 'الميكروفون جوه التطبيق ده مش مدعوم. الحل: دوس على خانة الكتابة واستخدم زرار الميكروفون اللي في كيبورد التليفون (الكتابة الصوتية)، وبعدين دوس إرسال. في Chrome الميكروفون بيشتغل عادي.' : 'Voice input is not supported in this app. Tap the text box and use your keyboard\'s microphone key, then Send. In Chrome the mic works directly.'); try { document.getElementById('nin').focus() } catch (e) {} return } L.started = true; startWatch(); if (L.state === 'listening') stopListening(); else listen() })
     live.addEventListener('click', function () { L.live = !L.live; live.textContent = L.live ? 'Live: on' : 'Live: off'; if (L.live) listen(); else stopListening() })
     lang.addEventListener('click', function () { L.lang = L.lang === 'ar' ? 'en' : 'ar'; stopListening(); stopSpeaking(); render() })
     mute.addEventListener('click', function () { L.mute = !L.mute; mute.textContent = L.mute ? 'Voice: off' : 'Voice: on'; if (L.mute) stopSpeaking() })
@@ -308,6 +324,12 @@
     if (!L.started) wrap.appendChild(h('div', { class: 'center' }, start, h('div', { class: 'priv' }, 'One tap lets the browser play her voice. After that she talks on her own.')))
     wrap.appendChild(list)
     wrap.appendChild(h('div', { class: 'row ctl' }, mic, live, lang, mute, vc))
+    var cap = h('div', { class: 'priv', dir: 'auto' })
+    function capText() {
+      var nv = voiceList().length, ar = L.lang === 'ar'
+      cap.textContent = (ar ? 'الصوت: ' : 'Voice: ') + (!ttsOK() ? (ar ? 'غير مدعوم هنا' : 'not supported here') : nv ? (ar ? 'جاهز (' + nv + ' صوت)' : 'ready (' + nv + ' voices)') : (ar ? 'مفيش صوت للغة دي على الجهاز' : 'no voice for this language on this device')) + '  ·  ' + (ar ? 'الميكروفون: ' : 'Mic: ') + (SR ? (ar ? 'مدعوم' : 'supported') : (ar ? 'غير مدعوم هنا (استخدم الكتابة الصوتية من الكيبورد)' : 'not supported here (use keyboard dictation)'))
+    }
+    capText(); setTimeout(capText, 1500); setTimeout(capText, 4000); wrap.appendChild(cap)
     wrap.appendChild(h('div', { class: 'compose' }, inp, send))
     wrap.appendChild(h('div', { class: 'priv' }, 'Chats are not stored. Actions NOUR takes are logged. She never approves or executes anything for you.'))
     main.appendChild(wrap); setState(L.state); setMouth(0); setTimeout(function () { list.scrollTop = list.scrollHeight }, 0)

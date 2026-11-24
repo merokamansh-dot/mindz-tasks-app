@@ -38,6 +38,15 @@ def scope(css):
     return ''.join(res)
 
 scoped = scope(css)
+# Z Cloud has a dark theme whose variables/colours must not leak into NOUR (white text on white boxes): pin NOUR to its own light palette.
+scoped += (P + '{color-scheme:light;color:#020f22;--ink:#020f22;--muted:#5b6573;--line:#e3dfd2;--card:#fff;--bg:#f6f4ee;background:#f6f4ee}'
+           + P + ' input,' + P + ' textarea,' + P + ' select{color:#020f22!important;background:#fff!important;-webkit-text-fill-color:#020f22;caret-color:#020f22;border-color:#e3dfd2!important}'
+           + P + ' ::placeholder{color:#7a8594!important;-webkit-text-fill-color:#7a8594;opacity:1}'
+           + P + ' .m.n,' + P + ' .card,' + P + ' .priv,' + P + ' .mut,' + P + ' label,' + P + ' h3,' + P + ' pre{color:#020f22}'
+           + P + ' .mut,' + P + ' .priv,' + P + ' .m.sys{color:#5b6573!important}'
+           + P + ' .m.u{color:#fff!important;background:#0d5fb3!important}'
+           + P + ' button.p,' + P + ' nav button.on{color:#fff!important}'
+           + P + ' button.s{color:#020f22!important}')
 scoped += (P + '{position:relative;border-radius:14px;overflow:hidden;font-size:15px;line-height:1.45;text-align:start}'
            + P + ' nav{position:static;top:auto}' + P + ' main{max-width:none;padding:10px 4px}'
            + P + ' .chat{height:min(680px,78vh);min-height:360px}' + P + ' button{margin:0}')
