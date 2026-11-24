@@ -870,3 +870,4 @@ button.hh-kpi:hover{transform:translateY(-2px);border-color:var(--brand)}
 .fx-mv{font-weight:600;white-space:nowrap}
 .fx-up{margin-top:12px}
 @media(max-width:600px){.fx-meta{white-space:normal}}
+.fx-tag{font-size:.68rem;font-weight:600;color:var(--muted);background:var(--soft);border-radius:6px;padding:2px 6px;white-space:nowrap}
