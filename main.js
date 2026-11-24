@@ -4757,7 +4757,7 @@ dompurify/dist/purify.cjs.js:
     ;(p.data || []).forEach(function (r) { names[r.id] = r.display_name })
     var rl = await sb.from('workspace_members').select('user_id,role').eq('workspace_id', ws)
     ;(rl.data || []).forEach(function (r) { roles[r.user_id] = r.role })
-    // handler = ONLY the designated independent recipient (the company lawyer's account). Neither the Director nor HR admins are handlers.
+    // handler = ONLY the designated complaints recipient (the Director, or another member the Director picks). HR admins are never handlers.
     var cs0 = await sb.rpc('nour_complaints_status', { p_ws: ws }); cstate = cs0.data || {}
     isHandler = !!cstate.is_handler
     var wl = await sb.rpc('nour_welcome_status', { p_ws: ws }); welcome = wl.data || {}
@@ -5086,7 +5086,7 @@ dompurify/dist/purify.cjs.js:
     var o = null
     if (/شكو|قضي|قضا|case|complain|concern|تحرش|تنمر|ظلم|harass|bully|discriminat|ضايق|مضايق|بيزعق|بيهين|اهانه|بيستغل|toxic|insult|picking on|treats me (badly|unfairly)|bothering me|مش مرتاح في الشغل/.test(q)) { o = L.last || await gather()
       if (isHandler) await say(o.cases ? t.cases(o.cases) + (ar ? '. افتح تبويب Cases.' : '. Open the Cases tab.') : (ar ? 'مفيش قضايا مفتوحة.' : 'No open cases.'))
-      else await say(ar ? 'أنا آسفة إنك بتمر بده. تقدر تبلّغ بشكل سري من تبويب "Confidential". الشكوى بتروح للجهة المستقلة اللي عينتها الشركة، ومدير الشركة وHR والزملاء مش بيشوفوها.' : 'I am sorry you are dealing with that. You can raise it privately under the Confidential tab. It goes to the independent recipient the company appointed; the Director, HR and colleagues cannot see it.'); return true }
+      else await say(ar ? 'أنا آسفة إنك بتمر بده. تقدر تبلّغ بشكل سري من تبويب "Confidential". الشكوى بتتحفظ بشكل آمن وبتروح بشكل خاص للجهة اللي الشركة حددتها، والزملاء ومسؤولي الـ HR مش بيشوفوها.' : 'I am sorry you are dealing with that. You can raise it privately under the Confidential tab. It is saved securely and goes privately to the person the company designated; colleagues and HR administrators cannot see it.'); return true }
     if (/اقتراح|فكره|suggestion|suggest an? idea|i have an idea/.test(q)) { await say(ar ? 'شكراً على الفكرة. اكتبها لي بالتفصيل في تبويب "Confidential" أو قولها للإدارة مباشرة، وأنا هتابعها.' : 'Thank you. Please write it up under the Confidential tab or tell management directly, and I will follow it.'); return true }
     if (/(الموافقات|approvals)\b|موافقات مستني|pending approval/.test(q)) { var r = await sb.from('nour_approvals').select('code,action_type,status').eq('workspace_id', ws).eq('status', 'PENDING_APPROVAL').limit(5); var rows = r.data || []
       await say(rows.length ? (ar ? 'الموافقات المستنية: ' : 'Waiting approvals: ') + rows.map(function (x) { return x.code + ' ' + x.action_type.replace(/_/g, ' ') }).join(ar ? '، ' : ', ') + (ar ? '. افتح تبويب الموافقات عشان تقرر.' : '. Open the Approvals tab to decide.') : (ar ? 'مفيش موافقات مستنية.' : 'No approvals waiting.')); return true }
@@ -5215,17 +5215,17 @@ dompurify/dist/purify.cjs.js:
   }
 
   // ---------- confidential concern ----------
-  var NOTICE_EN = 'Concerns and complaints sent through this channel go privately to the independent recipient appointed by the company. The Director (Amir), HR administrators and other employees cannot see them, including when the concern is about Amir. Information may be shared only when necessary for authorised follow-up, safety or legal obligations. We cannot promise absolute confidentiality.'
-  var NOTICE_AR = 'أي شكوى أو ملاحظة بتبعتها من هنا بتوصل بشكل خاص للجهة المستقلة اللي الشركة عيّنتها لاستلام الشكاوى. أمير (المدير) ومسؤولي الـ HR والموظفين التانيين مش بيشوفوها، حتى لو الشكوى بتخص أمير. المعلومات ممكن تتشارك بس لو ده ضروري للمتابعة المصرح بيها أو لحماية السلامة أو لالتزام قانوني. مش بنقدر نوعد بسرية مطلقة.'
-  var HELD_EN = ['What happens to a held concern', 'It is saved securely and is not sent to Amir, to HR administrators or to other employees. No email is sent about it. You can follow its status under "My cases" here. When a recipient is set, the concern moves to that person, and the status here will show it.', 'You do not have to wait. You can also: speak to a trusted person outside your reporting line; contact the Labour Office or Ministry of Manpower; get independent legal advice. In an emergency or if you feel unsafe, call 122 (police) or 123 (ambulance).']
-  var HELD_AR = ['إيه اللي بيحصل للشكوى المحجوزة', 'بتتحفظ بشكل آمن ومش بتتبعت لأمير ولا لمسؤولي الـ HR ولا لأي موظف تاني، ومفيش إيميل بيتبعت عنها. تقدر تتابع حالتها من "قضاياي" هنا. أول ما يتحدد المستلم المستقل، الشكوى بتروح له وحالتها هتظهر هنا.', 'مش لازم تستنى. تقدر كمان: تكلم شخص موثوق برا خط الإدارة بتاعك، أو تتواصل مع مكتب العمل أو وزارة القوى العاملة، أو تاخد استشارة قانونية مستقلة. في حالة الطوارئ أو لو حاسس إنك مش في أمان، اتصل بـ 122 (الشرطة) أو 123 (الإسعاف).']
+  function noticeEN(d) { return d.handler_is_director ? 'Concerns and complaints sent through this channel are saved securely in Z Cloud and go privately to the Director (Amir). Other employees and HR administrators cannot see them. No email is sent. Information may be shared only when necessary for authorised follow-up, safety or legal obligations. We cannot promise absolute confidentiality.' : 'Concerns and complaints sent through this channel go privately to the recipient designated by the company. Other employees and HR administrators cannot see them. Information may be shared only when necessary for authorised follow-up, safety or legal obligations. We cannot promise absolute confidentiality.' }
+  function noticeAR(d) { return d.handler_is_director ? 'أي شكوى أو ملاحظة بتبعتها من هنا بتتحفظ بشكل آمن في Z Cloud وبتوصل بشكل خاص لأمير (المدير). الزملاء ومسؤولي الـ HR مش بيشوفوها، ومفيش إيميل بيتبعت. المعلومات ممكن تتشارك بس لو ده ضروري للمتابعة المصرح بيها أو لحماية السلامة أو لالتزام قانوني. مش بنقدر نوعد بسرية مطلقة.' : 'أي شكوى أو ملاحظة بتبعتها من هنا بتوصل بشكل خاص للجهة اللي الشركة حددتها لاستلام الشكاوى. الزملاء ومسؤولي الـ HR مش بيشوفوها. المعلومات ممكن تتشارك بس لو ده ضروري للمتابعة المصرح بيها أو لحماية السلامة أو لالتزام قانوني. مش بنقدر نوعد بسرية مطلقة.' }
+  var HELD_EN = ['What happens to a held concern', 'It is saved securely and is not sent to HR administrators or to other employees. No email is sent about it. You can follow its status under "My cases" here. When a recipient is set, the concern moves to that person, and the status here will show it.', 'You do not have to wait. You can also: speak to a trusted person outside your reporting line; contact the Labour Office or Ministry of Manpower; get independent legal advice. In an emergency or if you feel unsafe, call 122 (police) or 123 (ambulance).']
+  var HELD_AR = ['إيه اللي بيحصل للشكوى المحجوزة', 'بتتحفظ بشكل آمن ومش بتتبعت لمسؤولي الـ HR ولا لأي موظف تاني، ومفيش إيميل بيتبعت عنها. تقدر تتابع حالتها من "قضاياي" هنا. أول ما يتحدد المستلم المستقل، الشكوى بتروح له وحالتها هتظهر هنا.', 'مش لازم تستنى. تقدر كمان: تكلم شخص موثوق برا خط الإدارة بتاعك، أو تتواصل مع مكتب العمل أو وزارة القوى العاملة، أو تاخد استشارة قانونية مستقلة. في حالة الطوارئ أو لو حاسس إنك مش في أمان، اتصل بـ 122 (الشرطة) أو 123 (الإسعاف).']
   function heldHelp() {
     return h('div', { class: 'held' }, h('h3', {}, HELD_EN[0]), h('p', { dir: 'auto' }, HELD_EN[1]), h('p', { dir: 'auto' }, HELD_EN[2]),
       h('h3', { dir: 'rtl' }, HELD_AR[0]), h('p', { dir: 'rtl' }, HELD_AR[1]), h('p', { dir: 'rtl' }, HELD_AR[2]))
   }
   function privacyNotice(d) {
-    var box = h('div', { class: 'card notice' }, h('h3', {}, 'How your concern is handled'), h('p', { dir: 'auto' }, NOTICE_EN), h('p', { dir: 'rtl' }, NOTICE_AR))
-    box.appendChild(h('p', { class: d.independent_ready ? 'mut' : 'warnline', dir: 'auto' }, d.independent_ready ? 'The independent recipient is set up.' : 'The complaints recipient is not set up yet. A concern sent now would be held securely: nobody (not the Director, HR or other employees) could read it until a recipient is set.'))
+    var box = h('div', { class: 'card notice' }, h('h3', {}, 'How your concern is handled'), h('p', { dir: 'auto' }, noticeEN(d)), h('p', { dir: 'rtl' }, noticeAR(d)))
+    box.appendChild(h('p', { class: d.independent_ready ? 'mut' : 'warnline', dir: 'auto' }, d.independent_ready ? 'The complaints recipient is set up.' : 'The complaints recipient is not set up yet. A concern sent now would be held securely: nobody (not HR or other employees) could read it until a recipient is set.'))
     if (!d.independent_ready) box.appendChild(heldHelp())
     return box
   }
@@ -5257,7 +5257,7 @@ dompurify/dist/purify.cjs.js:
       h('label', { class: 'row' }, urg, 'It is urgent or about safety'),
       h('div', { style: 'margin-top:10px' }, btn), h('div', { style: 'margin-top:10px' }, out)))
   }
-  var ROUTE_TXT = { director: 'With the independent recipient', independent: 'With the independent recipient', held: 'Held securely: the complaints recipient is not set up yet' }
+  var ROUTE_TXT = { director: 'With the complaints recipient', independent: 'With the complaints recipient', held: 'Held securely: the complaints recipient is not set up yet' }
   async function myCases(main) {
     var r = await sb.from('nour_cases').select('*').eq('workspace_id', ws).eq('reporter_id', me.id).order('created_at', { ascending: false }).limit(20)
     if (r.error || !r.data.length) return
@@ -5392,23 +5392,23 @@ dompurify/dist/purify.cjs.js:
     var chkd = await sb.rpc('nour_complaints_check', { p_ws: ws }), ck = chkd.data || {}
 
     var su = (await sb.rpc('nour_complaints_setup', { p_ws: ws })).data || {}, sx = (await sb.rpc('nour_complaint_stats', { p_ws: ws })).data || {}, rout = h('div', {}), rs = h('select', {}, h('option', { value: '' }, '— not set —'))
-    Object.keys(names).filter(function (id) { return roles[id] !== 'director' }).forEach(function (id) { rs.appendChild(h('option', { value: id }, nm(id))) }); rs.value = su.handler_id || ''; rs.disabled = !!cd.active
+    Object.keys(names).forEach(function (id) { rs.appendChild(h('option', { value: id }, nm(id) + (roles[id] === 'director' ? ' (Director: complaints come to you)' : ''))) }); rs.value = su.handler_id || ''; rs.disabled = !!cd.active
     async function rcall(fn, args, okTxt) { var x = await sb.rpc(fn, args); clear(rout); if (x.error) rout.appendChild(msg('err', x.error.message)); else { rout.appendChild(msg('ok', okTxt)); setTimeout(render, 900) } }
     function rtile(n, l) { return h('div', { class: 'tile' }, h('b', {}, String(n == null ? 0 : n)), h('span', {}, l)) }
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints recipient'),
-      h('div', { class: 'mut', dir: 'auto' }, 'Every employee complaint, including any about you, goes only to the recipient you choose here: the company lawyer’s own Z Cloud account. You, HR administrators and other employees cannot read complaints or their emails. Choose the account here, privately; do not write the name in chat. The recipient cannot be a Director, and cannot be changed while the channel is active.'),
+      h('div', { class: 'mut', dir: 'auto' }, 'Every employee complaint is saved in Z Cloud and goes to the recipient you choose here, with an alert on the bell. Choose your own account to receive them yourself, or another member (for example the company lawyer). HR administrators and other employees cannot read complaints. Complaints about you will also reach the recipient you choose. No email is needed. The recipient cannot be changed while the channel is active.'),
       h('label', {}, 'Recipient account'), rs,
       h('div', { style: 'margin-top:6px' }, h('button', { class: 's', disabled: !!cd.active, on: { click: function () { rcall('nour_complaints_handler_set', { p_ws: ws, p_handler: rs.value || null }, 'Recipient saved. The test confirmation was reset.') } } }, 'Save recipient')),
       h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, su.configured ? 'Selected: ' + (su.handler_name || 'account') + (su.email_masked ? ' · test email goes to ' + su.email_masked : ' · this account has no email address') : 'No recipient selected. Complaints sent now would be held, readable by nobody.'),
       chk(!!su.test_confirmed, 'The recipient confirmed receiving the test email'),
       h('div', { class: 'mut', dir: 'auto' }, 'Test email status: ' + (su.test_status || 'not sent') + (su.test_error ? ' (' + su.test_error + ')' : '')),
       h('div', { style: 'margin-top:6px' }, h('button', { class: 's', disabled: !su.configured || !su.email_masked, on: { click: function () { rcall('nour_complaints_test_send', { p_ws: ws }, 'Test email queued. It contains no complaint. The recipient must confirm it in NOUR, Cases tab.') } } }, 'Send test email')),
-      h('div', { class: 'mut', style: 'margin-top:10px' }, 'What you can see: counts only, never complaint text, category, reference or who raised it.'),
+      h('div', { class: 'mut', style: 'margin-top:10px' }, 'Counts only here. The full cases are in the Cases tab for the recipient.'),
       h('div', { class: 'tiles' }, rtile(sx.open, 'open'), rtile(sx.urgent_open, 'urgent'), rtile(sx.closed, 'closed'), rtile(sx.held_open, 'held (no recipient)'), rtile(sx.oldest_open_days, 'oldest open (days)')),
       h('div', { style: 'margin-top:8px' }, rout)))
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (cd.active ? 'ok' : 'bad') }, cd.active ? 'Active' : 'Not active'), h('span', { class: 'sp' }), h('button', { class: cd.active ? 'd' : 'p', on: { click: function () { setAct(!cd.active) } } }, cd.active ? 'Switch off' : 'Activate')),
-      chk(!!ck.handler_set, 'Recipient selected'), chk(!!ck.handler_email_ok, 'Recipient account has an email address'), chk(!!ck.test_confirmed, 'Recipient confirmed the test email (required to activate)'),
-      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'The channel opens only after the recipient is set and has confirmed the test email. You will never be able to read the complaints. Activate only after you approve the tests.'), h('div', { style: 'margin-top:8px' }, cout)))
+      chk(!!ck.handler_set, 'Recipient selected (required to activate)'), chk(!!ck.handler_email_ok, 'Recipient account has an email address (optional: only for email copies)'),
+      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'The channel opens as soon as a recipient is set. Employees fill in the form, the case is saved in Z Cloud, and the recipient sees it in the Cases tab and gets an alert. No email is sent unless the mail service is connected and the test email is confirmed. The recipient sees the employee name.'), h('div', { style: 'margin-top:8px' }, cout)))
     var wout = h('div', {})
     async function setWelcome(v) { var x = await sb.rpc('nour_set_settings', { p_ws: ws, p_patch: { welcome_published: v } }); clear(wout); if (x.error) wout.appendChild(msg('err', x.error.message)); else { wout.appendChild(msg('ok', v ? 'Welcome section published to all employees.' : 'Welcome section hidden from employees.')); var s3 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s3.data || settings; setTimeout(render, 700) } }
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Welcome section on the Z Cloud home page'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.welcome_published ? 'ok' : 'warn') }, settings.welcome_published ? 'Visible to employees' : 'Preview only (you)'), h('span', { class: 'sp' }), h('button', { class: settings.welcome_published ? 'd' : 'p', on: { click: function () { setWelcome(!settings.welcome_published) } } }, settings.welcome_published ? 'Hide from employees' : 'Publish to employees')),
