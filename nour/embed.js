@@ -338,8 +338,11 @@
     var start = h('button', { class: 'p big' }, tx().start)
     chat.forEach(function (c) { list.appendChild(h('div', { class: 'm ' + (c.role === 'user' ? 'u' : c.sys ? 'sys' : 'n'), dir: 'auto' }, c.content)) })
     function go() { var t = inp.value.trim(); if (!t) return; inp.value = ''; if (!L.started) { L.started = true; startWatch() } handle(t) }
+    var dictating = false, dtimer = null
+    inp.addEventListener('input', function () { if (!dictating) return; clearTimeout(dtimer); dtimer = setTimeout(function () { if (dictating && inp.value.trim()) { dictating = false; go() } }, 2500) })
+    send.addEventListener('click', function () { dictating = false })
     send.addEventListener('click', go); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go() } })
-    mic.addEventListener('click', function () { if (!SR) { notice(L.lang === 'ar' ? 'الميكروفون جوه التطبيق ده مش مدعوم. الحل: دوس على خانة الكتابة واستخدم زرار الميكروفون اللي في كيبورد التليفون (الكتابة الصوتية)، وبعدين دوس إرسال. في Chrome الميكروفون بيشتغل عادي.' : 'Voice input is not supported in this app. Tap the text box and use your keyboard\'s microphone key, then Send. In Chrome the mic works directly.'); try { document.getElementById('nin').focus() } catch (e) {} return } L.started = true; startWatch(); if (L.state === 'listening') stopListening(); else listen() })
+    mic.addEventListener('click', function () { if (!SR) { notice(L.lang === 'ar' ? 'الميكروفون جوه التطبيق ده مش مدعوم. الحل: دوس على خانة الكتابة واستخدم زرار الميكروفون اللي في كيبورد التليفون (الكتابة الصوتية) وكلّمني، ولما تسكت ثانيتين هبعت كلامك لوحدي. في Chrome الميكروفون بيشتغل عادي.' : 'Voice input is not supported in this app. Tap the text box and use your keyboard\'s microphone key, then Send. In Chrome the mic works directly.'); dictating = true; try { document.getElementById('nin').focus() } catch (e) {} return } L.started = true; startWatch(); if (L.state === 'listening') stopListening(); else listen() })
     live.addEventListener('click', function () { L.live = !L.live; live.textContent = L.live ? 'Live: on' : 'Live: off'; if (L.live) listen(); else stopListening() })
     lang.addEventListener('click', function () { L.lang = L.lang === 'ar' ? 'en' : 'ar'; stopListening(); stopSpeaking(); render() })
     mute.addEventListener('click', function () { L.mute = !L.mute; mute.textContent = L.mute ? 'Voice: off' : 'Voice: on'; if (L.mute) stopSpeaking() })
