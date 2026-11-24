@@ -1,7 +1,7 @@
 (function () {
   'use strict'
   var C = window.__MINDZ_CONFIG || {}, app = document.getElementById('app')
-  var sb, me, ws, isDir = false, isHR = false, isHandler = false, settings = {}, names = {}, roles = {}, welcome = {}, tab = 'chat', chat = [], busy = false
+  var sb, me, ws, isDir = false, isHR = false, isHandler = false, cstate = {}, settings = {}, names = {}, roles = {}, welcome = {}, tab = 'chat', chat = [], busy = false
 
   function h(tag, attrs) {
     var e = document.createElement(tag), a = attrs || {}
@@ -41,8 +41,9 @@
     ;(p.data || []).forEach(function (r) { names[r.id] = r.display_name })
     var rl = await sb.from('workspace_members').select('user_id,role').eq('workspace_id', ws)
     ;(rl.data || []).forEach(function (r) { roles[r.user_id] = r.role })
-    // handler = the Director (ordinary cases) or the independent contact (cases involving the Director). HR admins are not handlers.
-    isHandler = isDir || (!!settings.escalation_contact && settings.escalation_contact === me.id && roles[me.id] !== 'director')
+    // handler = ONLY the designated independent recipient (the company lawyer's account). Neither the Director nor HR admins are handlers.
+    var cs0 = await sb.rpc('nour_complaints_status', { p_ws: ws }); cstate = cs0.data || {}
+    isHandler = !!cstate.is_handler
     var wl = await sb.rpc('nour_welcome_status', { p_ws: ws }); welcome = wl.data || {}
     render()
   }
@@ -222,6 +223,9 @@
   }
   function vChat(main) {
     firstGreeting()
+    var ai = h('div', { class: 'pill bad', role: 'status', style: 'margin:6px 0;display:inline-block' }, 'AI conversation: OFFLINE (answers come from HR data only)')
+    main.appendChild(ai)
+    ;(async function () { try { var r = await sb.functions.invoke('nour-chat', { body: { ping: true } }); if (r.data && r.data.key_present) { ai.className = 'pill warn'; ai.textContent = 'AI conversation: key present, not yet live-tested' } } catch (e) { /* stays OFFLINE */ } })()
     var wrap = h('div', { class: 'live' }), av = avatarSVG()
     var st = h('div', { id: 'nst', class: 'nst' }), list = h('div', { id: 'nlist', class: 'msgs' })
     var inp = h('textarea', { id: 'nin', dir: 'auto', placeholder: L.lang === 'ar' ? 'اكتب أو اتكلم…' : 'Type or speak…', maxlength: '2000' })
@@ -264,18 +268,17 @@
   }
 
   // ---------- confidential concern ----------
-  var NOTICE_EN = 'Concerns and complaints sent through this channel go to Amir, the Managing Director, as the designated recipient. Other employees and HR administrators cannot see them. Information may be shared only when necessary for authorised follow-up, safety or legal obligations. We cannot promise absolute confidentiality. If your concern is about Amir personally, or he has a direct conflict of interest, it is NOT sent to him: it goes to an independent contact.'
-  var NOTICE_AR = 'أي شكوى أو ملاحظة بتبعتها من هنا بتوصل لأمير، المدير العام، باعتباره الجهة المخصصة لاستلامها. الموظفين التانيين ومسؤولي الـ HR مش بيشوفوها. المعلومات ممكن تتشارك بس لو ده ضروري للمتابعة المصرح بيها أو لحماية السلامة أو لالتزام قانوني. مش بنقدر نوعد بسرية مطلقة. لو الموضوع بخص أمير شخصياً أو عنده تعارض مصالح مباشر، الشكوى مش بتتبعتله، وبتروح لجهة مستقلة.'
-
-  var HELD_EN = ['What happens to a held concern', 'It is saved securely and is not sent to Amir, to HR administrators or to other employees. No email is sent about it. You can follow its status under "My cases" here. When an independent contact is set, the concern moves to that person, and the status here will show it.', 'You do not have to wait. You can also: speak to a trusted person outside your reporting line; contact the Labour Office or Ministry of Manpower; get independent legal advice. In an emergency or if you feel unsafe, call 122 (police) or 123 (ambulance).']
-  var HELD_AR = ['إيه اللي بيحصل للشكوى المحجوزة', 'بتتحفظ بشكل آمن ومش بتتبعت لأمير ولا لمسؤولي الـ HR ولا لأي موظف تاني، ومفيش إيميل بيتبعت عنها. تقدر تتابع حالتها من "قضاياي" هنا. أول ما يتحدد شخص مستقل، الشكوى بتروح له وحالتها هتظهر هنا.', 'مش لازم تستنى. تقدر كمان: تكلم شخص موثوق برا خط الإدارة بتاعك، أو تتواصل مع مكتب العمل أو وزارة القوى العاملة، أو تاخد استشارة قانونية مستقلة. في حالة الطوارئ أو لو حاسس إنك مش في أمان، اتصل بـ 122 (الشرطة) أو 123 (الإسعاف).']
+  var NOTICE_EN = 'Concerns and complaints sent through this channel go privately to the independent recipient appointed by the company. The Director (Amir), HR administrators and other employees cannot see them, including when the concern is about Amir. Information may be shared only when necessary for authorised follow-up, safety or legal obligations. We cannot promise absolute confidentiality.'
+  var NOTICE_AR = 'أي شكوى أو ملاحظة بتبعتها من هنا بتوصل بشكل خاص للجهة المستقلة اللي الشركة عيّنتها لاستلام الشكاوى. أمير (المدير) ومسؤولي الـ HR والموظفين التانيين مش بيشوفوها، حتى لو الشكوى بتخص أمير. المعلومات ممكن تتشارك بس لو ده ضروري للمتابعة المصرح بيها أو لحماية السلامة أو لالتزام قانوني. مش بنقدر نوعد بسرية مطلقة.'
+  var HELD_EN = ['What happens to a held concern', 'It is saved securely and is not sent to Amir, to HR administrators or to other employees. No email is sent about it. You can follow its status under "My cases" here. When a recipient is set, the concern moves to that person, and the status here will show it.', 'You do not have to wait. You can also: speak to a trusted person outside your reporting line; contact the Labour Office or Ministry of Manpower; get independent legal advice. In an emergency or if you feel unsafe, call 122 (police) or 123 (ambulance).']
+  var HELD_AR = ['إيه اللي بيحصل للشكوى المحجوزة', 'بتتحفظ بشكل آمن ومش بتتبعت لأمير ولا لمسؤولي الـ HR ولا لأي موظف تاني، ومفيش إيميل بيتبعت عنها. تقدر تتابع حالتها من "قضاياي" هنا. أول ما يتحدد المستلم المستقل، الشكوى بتروح له وحالتها هتظهر هنا.', 'مش لازم تستنى. تقدر كمان: تكلم شخص موثوق برا خط الإدارة بتاعك، أو تتواصل مع مكتب العمل أو وزارة القوى العاملة، أو تاخد استشارة قانونية مستقلة. في حالة الطوارئ أو لو حاسس إنك مش في أمان، اتصل بـ 122 (الشرطة) أو 123 (الإسعاف).']
   function heldHelp() {
     return h('div', { class: 'held' }, h('h3', {}, HELD_EN[0]), h('p', { dir: 'auto' }, HELD_EN[1]), h('p', { dir: 'auto' }, HELD_EN[2]),
       h('h3', { dir: 'rtl' }, HELD_AR[0]), h('p', { dir: 'rtl' }, HELD_AR[1]), h('p', { dir: 'rtl' }, HELD_AR[2]))
   }
   function privacyNotice(d) {
     var box = h('div', { class: 'card notice' }, h('h3', {}, 'How your concern is handled'), h('p', { dir: 'auto' }, NOTICE_EN), h('p', { dir: 'rtl' }, NOTICE_AR))
-    box.appendChild(h('p', { class: d.independent_ready ? 'mut' : 'warnline', dir: 'auto' }, d.independent_ready ? 'The independent route is available.' : 'The independent route is not available yet. A concern about Amir or a conflict of interest cannot be sent to him. It would be held securely, and nobody could see it until the independent contact is set.'))
+    box.appendChild(h('p', { class: d.independent_ready ? 'mut' : 'warnline', dir: 'auto' }, d.independent_ready ? 'The independent recipient is set up.' : 'The complaints recipient is not set up yet. A concern sent now would be held securely: nobody (not the Director, HR or other employees) could read it until a recipient is set.'))
     if (!d.independent_ready) box.appendChild(heldHelp())
     return box
   }
@@ -289,36 +292,25 @@
   function vConcernForm(main, d) {
     var cats = ['workplace_concern', 'conflict', 'unfair_treatment', 'harassment', 'bullying', 'discrimination', 'workload', 'management', 'communication', 'safety']
     var sel = h('select', {}), sum = h('textarea', { dir: 'auto', maxlength: '4000', placeholder: 'Tell NOUR what happened, in your own words.' }), urg = h('input', { type: 'checkbox', style: 'width:auto' }), out = h('div', {}), btn = h('button', { class: 'p' }, 'Send privately')
-    var rNo = h('input', { type: 'radio', name: 'conf', value: 'no', style: 'width:auto' }), rYes = h('input', { type: 'radio', name: 'conf', value: 'yes', style: 'width:auto' })
     cats.forEach(function (c) { sel.appendChild(h('option', { value: c }, c.replace(/_/g, ' '))) })
-    async function send(involves, confirmNo) {
+    async function send() {
       btn.disabled = true
-      var r = await sb.rpc('nour_case_open', { p_ws: ws, p_category: sel.value, p_summary: sum.value.trim(), p_urgent: urg.checked, p_involves_leadership: involves, p_confirm_not_conflict: !!confirmNo })
+      var r = await sb.rpc('nour_case_open', { p_ws: ws, p_category: sel.value, p_summary: sum.value.trim(), p_urgent: urg.checked })
       btn.disabled = false; clear(out)
-      if (r.error && /DIRECTOR_NAME_MENTIONED/.test(r.error.message)) {
-        out.appendChild(h('div', { class: 'err', dir: 'auto' }, 'You mention Amir. Does this concern him personally, or is it a matter where he has a direct conflict of interest?',
-          h('div', { class: 'row', style: 'margin-top:8px' },
-            h('button', { class: 'd', on: { click: function () { send(true, false) } } }, 'Yes, it concerns him'),
-            h('button', { class: 's', on: { click: function () { send(false, true) } } }, 'No, it does not'))))
-        return
-      }
       if (r.error) { out.appendChild(msg('err', 'Could not open the case: ' + r.error.message.replace(/^[A-Z_]+: /, ''))); return }
-      out.appendChild(msg('ok', 'Received. Case ' + r.data.code + '. ' + r.data.notice)); sum.value = ''; rNo.checked = rYes.checked = false
+      out.appendChild(msg('ok', 'Received. Case ' + r.data.code + '. ' + r.data.notice)); sum.value = ''
       setTimeout(render, 1800)
     }
     btn.addEventListener('click', function () {
       if (sum.value.trim().length < 10) { clear(out); out.appendChild(msg('err', 'Please write a little more detail.')); return }
-      if (!rNo.checked && !rYes.checked) { clear(out); out.appendChild(msg('err', 'Please answer the question about Amir first.')); return }
-      send(rYes.checked, false)
+      send()
     })
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Raise a concern'),
       h('label', {}, 'Type'), sel, h('label', {}, 'What happened'), sum,
       h('label', { class: 'row' }, urg, 'It is urgent or about safety'),
-      h('div', { class: 'q' }, h('b', {}, 'Does this concern Amir personally, or a matter where he has a direct conflict of interest?'),
-        h('label', { class: 'row', style: 'flex-wrap:nowrap' }, rNo, 'No'), h('label', { class: 'row', style: 'flex-wrap:nowrap;align-items:flex-start' }, rYes, 'Yes. Do not send it to him.' + (d.independent_ready ? '' : ' (The independent route is not available yet; it will be held securely.)'))),
       h('div', { style: 'margin-top:10px' }, btn), h('div', { style: 'margin-top:10px' }, out)))
   }
-  var ROUTE_TXT = { director: 'With the Director', independent: 'With the independent contact', held: 'Held securely: the independent route is not available yet' }
+  var ROUTE_TXT = { director: 'With the independent recipient', independent: 'With the independent recipient', held: 'Held securely: the complaints recipient is not set up yet' }
   async function myCases(main) {
     var r = await sb.from('nour_cases').select('*').eq('workspace_id', ws).eq('reporter_id', me.id).order('created_at', { ascending: false }).limit(20)
     if (r.error || !r.data.length) return
@@ -358,7 +350,7 @@
     })
   }
 
-  // ---------- cases dashboard (the Director, or the independent contact for matters involving him) ----------
+  // ---------- cases dashboard (ONLY the designated independent recipient) ----------
   var CATS = ['workplace_concern', 'conflict', 'unfair_treatment', 'harassment', 'bullying', 'discrimination', 'workload', 'management', 'communication', 'safety']
   var PRI = ['low', 'normal', 'high', 'urgent'], PRANK = { urgent: 0, high: 1, normal: 2, low: 3 }
   var caseFilter = 'open'
@@ -370,6 +362,12 @@
     var all = r.data, isOpen = function (c) { return c.status !== 'resolved' && c.status !== 'closed' }
     var open = all.filter(isOpen), oldest = open.reduce(function (m, c) { return Math.max(m, ageDays(c.created_at)) }, 0)
     function tile(n, l, bad) { return h('div', { class: 'tile' + (bad && n ? ' bad' : '') }, h('b', {}, String(n)), h('span', {}, l)) }
+    var cs1 = (await sb.rpc('nour_complaints_status', { p_ws: ws })).data || {}
+    if (cs1.test_waiting) {
+      var tout = h('div', {})
+      main.appendChild(h('div', { class: 'card notice' }, h('h3', {}, 'Confirm the test email'), h('div', { dir: 'auto' }, 'A test email (no complaint inside) was sent to your account address. Check that it arrived, then confirm. Confirm only if you are the company\'s designated complaints recipient. Complaints cannot be switched on until you confirm.'),
+        h('div', { style: 'margin-top:8px' }, h('button', { class: 'p', disabled: cs1.test_status !== 'sent', on: { click: async function () { var x = await sb.rpc('nour_complaints_test_confirm', { p_ws: ws }); clear(tout); if (x.error) tout.appendChild(msg('err', x.error.message)); else { tout.appendChild(msg('ok', 'Confirmed.')); setTimeout(render, 900) } } } }, 'I received the test email')), h('div', { class: 'mut' }, 'Test email status: ' + (cs1.test_status || 'waiting') + (cs1.test_status === 'sent' ? '' : '. The button works once the mail service has sent it.')), h('div', {}, tout)))
+    }
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential cases'), h('div', { class: 'tiles' }, tile(open.length, 'open'), tile(open.filter(function (c) { return c.priority === 'urgent' || c.priority === 'high' }).length, 'high / urgent', true), tile(open.filter(function (c) { return c.status === 'received' }).length, 'not yet reviewed', true), tile(oldest, 'days, oldest open')),
       h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, 'You see only the cases routed to you. Opening a case is recorded in its own history, never in the general log. Notes marked internal are never shown to the employee.'),
       h('div', { class: 'row', style: 'margin-top:8px' }, ['open', 'urgent', 'all'].map(function (f) { return h('button', { class: caseFilter === f ? 'p' : 's', on: { click: function () { caseFilter = f; render() } } }, f) }))))
@@ -380,7 +378,7 @@
   }
   function caseCard(c) {
     var det = h('div', {}), opened = false
-    var card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', {}, c.code), h('span', { class: 'pill ' + (c.priority === 'urgent' ? 'bad' : c.priority === 'high' ? 'warn' : '') }, c.priority), h('span', { class: 'pill' }, c.category.replace(/_/g, ' ')), h('span', { class: 'pill warn' }, c.status), h('span', { class: 'sp' }), c.involves_leadership ? h('span', { class: 'pill' }, 'independent') : null),
+    var card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', {}, c.code), h('span', { class: 'pill ' + (c.priority === 'urgent' ? 'bad' : c.priority === 'high' ? 'warn' : '') }, c.priority), h('span', { class: 'pill' }, c.category.replace(/_/g, ' ')), h('span', { class: 'pill warn' }, c.status), h('span', { class: 'sp' })),
       h('div', { class: 'mut' }, nm(c.reporter_id) + ' · opened ' + when(c.created_at) + ' · ' + ageDays(c.created_at) + ' day(s) ago'), det)
     card.style.cursor = 'pointer'
     card.addEventListener('click', async function (ev) {
@@ -393,7 +391,7 @@
       ;(e2.data || []).forEach(function (e) { tl.appendChild(h('div', { class: 'mut', dir: 'auto', style: 'margin-top:4px' }, when(e.at) + ' · ' + (e.actor_id ? nm(e.actor_id) : 'system') + ' · ' + e.kind + (e.internal ? ' (internal)' : '') + (e.body ? ': ' + e.body : ''))) })
       det.appendChild(tl)
       var es = await sb.rpc('nour_case_email_status', { p_case: c.id }), ed = es.data || {}
-      det.appendChild(h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Email to complaints mailbox: ' + (es.error ? 'unknown' : (ed.status === 'sent' ? 'delivered to the mail service' + (ed.sent_at ? ' ' + when(ed.sent_at) : '') : ed.status === 'failed' ? 'FAILED. ' + (ed.error || '') : ed.status === 'queued' || ed.status === 'sending' ? 'waiting to send' : 'not emailed'))))
+      det.appendChild(h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Email notification to you: ' + (es.error ? 'unknown' : (ed.status === 'sent' ? 'delivered to the mail service' + (ed.sent_at ? ' ' + when(ed.sent_at) : '') : ed.status === 'failed' ? 'FAILED. ' + (ed.error || '') : ed.status === 'queued' || ed.status === 'sending' ? 'waiting to send' : 'not emailed'))))
       // triage
       var cs = h('select', {}, CATS.map(function (x) { return h('option', { value: x }, x.replace(/_/g, ' ')) })), ps = h('select', {}, PRI.map(function (x) { return h('option', { value: x }, x) })); cs.value = c.category; ps.value = c.priority
       det.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, h('div', { class: 'sp' }, cs), ps, h('button', { class: 's', on: { click: async function () { var x = await sb.rpc('nour_case_triage', { p_case: c.id, p_category: cs.value, p_priority: ps.value }); if (x.error) alert(x.error.message); else render() } } }, 'Save triage')))
@@ -404,12 +402,12 @@
       var ta = h('textarea', { dir: 'auto', placeholder: 'Reply to the employee, or write an internal note' }), internal = h('input', { type: 'checkbox', style: 'width:auto' })
       det.appendChild(h('div', { style: 'margin-top:10px' }, ta, h('div', { class: 'row', style: 'margin-top:6px' }, h('label', { class: 'row' }, internal, 'Internal note (employee cannot see it)'), h('span', { class: 'sp' }), h('button', { class: 's', on: { click: async function () { if (!ta.value.trim()) return; var x = await sb.rpc('nour_case_message', { p_case: c.id, p_body: ta.value.trim(), p_internal: internal.checked }); if (x.error) alert(x.error.message); else render() } } }, 'Save'))))
       // follow-up actions
-      var acts = h('div', { style: 'margin-top:10px' }, h('div', { class: 'mut' }, 'Follow-up actions (the assignee sees only the action text, never the case)'))
+      var acts = h('div', { style: 'margin-top:10px' }, h('div', { class: 'mut' }, 'Follow-up reminders for you only. Never write case details here.'))
       ;(a2.data || []).forEach(function (a) { acts.appendChild(h('div', { class: 'row', style: 'margin:4px 0' }, h('div', { class: 'sp', dir: 'auto' }, a.title + ' → ' + nm(a.assignee_id) + (a.due_date ? ' (due ' + a.due_date + ')' : '') + ' · ' + a.status),
         a.status === 'open' ? h('button', { class: 's', on: { click: async function () { var x = await sb.rpc('nour_case_action_set', { p_id: a.id, p_status: 'cancelled' }); if (x.error) alert(x.error.message); else render() } } }, 'Cancel') : null)) })
-      var who = h('select', {}, h('option', { value: '' }, '— assign to —')); Object.keys(names).forEach(function (id) { if (id !== c.reporter_id && id !== me.id && !(c.involves_leadership && roles[id] === 'director')) who.appendChild(h('option', { value: id }, nm(id))) })
+      var who = { value: me.id }
       var at = h('input', { dir: 'auto', maxlength: '200', placeholder: 'Action (do not write case details)' }), ad = h('input', { type: 'date' })
-      acts.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, who, h('div', { class: 'sp' }, at), ad, h('button', { class: 's', on: { click: async function () { if (!who.value || !at.value.trim()) return; var x = await sb.rpc('nour_case_action_add', { p_case: c.id, p_assignee: who.value, p_title: at.value.trim(), p_due: ad.value || null }); if (x.error) alert(x.error.message); else render() } } }, 'Assign')))
+      acts.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, h('div', { class: 'sp' }, at), ad, h('button', { class: 's', on: { click: async function () { if (!who.value || !at.value.trim()) return; var x = await sb.rpc('nour_case_action_add', { p_case: c.id, p_assignee: who.value, p_title: at.value.trim(), p_due: ad.value || null }); if (x.error) alert(x.error.message); else render() } } }, 'Add reminder')))
       det.appendChild(acts)
     })
     return card
@@ -436,38 +434,34 @@
     main.appendChild(h('div', { class: 'boot' }, 'Loading…'))
     var jr = await sb.from('nour_job_runs').select('*').eq('workspace_id', ws).order('started_at', { ascending: false }).limit(8)
     var ac = await sb.from('nour_activity').select('*').eq('workspace_id', ws).order('at', { ascending: false }).limit(25); clear(main)
-    var members = Object.keys(names), esc = h('select', {}, h('option', { value: '' }, '— not set —'))
-    members.filter(function (id) { return roles[id] !== 'director' }).forEach(function (id) { esc.appendChild(h('option', { value: id }, nm(id))) }); esc.value = settings.escalation_contact || ''
     var out = h('div', {})
     async function patch(p, label) { var x = await sb.rpc('nour_set_settings', { p_ws: ws, p_patch: p }); clear(out); if (x.error) out.appendChild(msg('err', x.error.message)); else { out.appendChild(msg('ok', label + ' saved.')); var s = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s.data || settings; setTimeout(render, 700) } }
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Control'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.enabled && !settings.paused ? 'ok' : 'bad') }, settings.enabled ? (settings.paused ? 'Paused' : 'Running') : 'Off'), h('span', { class: 'sp' }),
       h('button', { class: settings.paused ? 'p' : 'd', on: { click: function () { patch({ paused: !settings.paused }, settings.paused ? 'Resumed' : 'Paused') } } }, settings.paused ? 'Resume NOUR' : 'Pause NOUR')),
-      h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, 'Employee concerns come to you, the Director. If a concern involves you personally or you have a direct conflict of interest, it is never routed to you.'),
-      h('label', {}, 'Independent contact for concerns involving the Director'), esc, h('div', { class: 'mut', dir: 'auto' }, 'Must be a Z Cloud member who is not a Director. Until one is set, such concerns are held securely and the employee is told the independent route is not available yet.'), h('div', { style: 'margin-top:8px' }, h('button', { class: 's', on: { click: function () { patch({ escalation_contact: esc.value || null }, 'Contact') } } }, 'Save contact')), h('div', { style: 'margin-top:8px' }, out)))
+      h('div', { style: 'margin-top:8px' }, out)))
     var cst = await sb.rpc('nour_complaints_status', { p_ws: ws }), cd = cst.data || {}, cout = h('div', {})
     function chk(ok, t) { return h('div', { class: 'row' }, h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, ok ? 'OK' : 'Missing'), h('span', { class: 'mut' }, t)) }
     async function setAct(v) { var x = await sb.rpc('nour_complaints_set_active', { p_ws: ws, p_active: v }); clear(cout); if (x.error) cout.appendChild(msg('err', x.error.message)); else { cout.appendChild(msg('ok', v ? 'Confidential complaints are now active.' : 'Confidential complaints are switched off.')); var s2 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s2.data || settings; setTimeout(render, 700) } }
     var chkd = await sb.rpc('nour_complaints_check', { p_ws: ws }), ck = chkd.data || {}
 
-    var eo = (await sb.rpc('nour_complaints_email_overview', { p_ws: ws })).data || {}, mout = h('div', {}), maddr = h('input', { type: 'email', value: eo.address || '', dir: 'ltr', autocomplete: 'off' })
-    async function mcall(fn, args, okTxt) { var x = await sb.rpc(fn, args); clear(mout); if (x.error) mout.appendChild(msg('err', x.error.message)); else { mout.appendChild(msg('ok', okTxt)); setTimeout(render, 900) } }
-    async function mretry() { var x = await sb.rpc('email_flush'); clear(mout); if (x.error) mout.appendChild(msg('err', x.error.message)); else { mout.appendChild(msg('ok', 'Failed emails were queued again.')); setTimeout(render, 900) } }
-    var tst = eo.test_status
-    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Complaints mailbox'),
-      h('div', { class: 'mut', dir: 'auto' }, 'Ordinary concerns (not about you) are emailed to this address with the case reference, date, category, priority and the employee’s name and work email. Concerns involving you are never emailed. The case itself stays in NOUR with access limits and an audit trail. Email is not end-to-end encrypted, and anyone who administers this mailbox can read it.'),
-      h('label', {}, 'Mailbox address'), maddr, h('div', { style: 'margin-top:6px' }, h('button', { class: 's', on: { click: function () { mcall('nour_complaints_email_set', { p_ws: ws, p_email: maddr.value.trim() }, 'Address saved. Confirmation and test were reset and the channel is switched off.') } } }, 'Save address')),
-      chk(!!eo.confirmed_at, 'You confirm only authorised people, none of them involved in a concern, can read this mailbox'),
-      h('div', { style: 'margin:6px 0' }, h('button', { class: eo.confirmed_at ? 'd' : 'p', on: { click: function () { mcall('nour_complaints_email_confirm', { p_ws: ws, p_confirm: !eo.confirmed_at }, eo.confirmed_at ? 'Confirmation removed.' : 'Confirmed.') } } }, eo.confirmed_at ? 'Withdraw confirmation' : 'I confirm mailbox access')),
-      chk(!!eo.tested_at, 'Test email sent, received in the mailbox, and confirmed by you'),
-      h('div', { class: 'mut', dir: 'auto' }, 'Test email status: ' + (tst || 'not sent') + (eo.test_error ? ' (' + eo.test_error + ')' : '')),
-      h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 's', disabled: !eo.confirmed_at, on: { click: function () { mcall('nour_complaints_email_test', { p_ws: ws }, 'Test email queued. It carries no complaint data. Check the mailbox, then press “I received it”.') } } }, 'Send test email'),
-        h('button', { class: 'p', disabled: tst !== 'sent' || !!eo.tested_at, on: { click: function () { mcall('nour_complaints_email_test_confirm', { p_ws: ws }, 'Test confirmed.') } } }, 'I received it')),
-      h('div', { class: 'mut', style: 'margin-top:8px' }, 'Complaint emails: sent ' + (eo.sent || 0) + ' · queued ' + (eo.queued || 0) + ' · failed ' + (eo.failed || 0)), eo.last_error ? h('div', { class: 'warnline', dir: 'auto' }, 'Last error: ' + eo.last_error) : null,
-      (eo.failed ? h('div', { style: 'margin-top:6px' }, h('button', { class: 's', on: { click: mretry } }, 'Retry failed emails')) : null),
-      h('div', { style: 'margin-top:8px' }, mout)))
+    var su = (await sb.rpc('nour_complaints_setup', { p_ws: ws })).data || {}, sx = (await sb.rpc('nour_complaint_stats', { p_ws: ws })).data || {}, rout = h('div', {}), rs = h('select', {}, h('option', { value: '' }, '— not set —'))
+    Object.keys(names).filter(function (id) { return roles[id] !== 'director' }).forEach(function (id) { rs.appendChild(h('option', { value: id }, nm(id))) }); rs.value = su.handler_id || ''; rs.disabled = !!cd.active
+    async function rcall(fn, args, okTxt) { var x = await sb.rpc(fn, args); clear(rout); if (x.error) rout.appendChild(msg('err', x.error.message)); else { rout.appendChild(msg('ok', okTxt)); setTimeout(render, 900) } }
+    function rtile(n, l) { return h('div', { class: 'tile' }, h('b', {}, String(n == null ? 0 : n)), h('span', {}, l)) }
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints recipient'),
+      h('div', { class: 'mut', dir: 'auto' }, 'Every employee complaint, including any about you, goes only to the recipient you choose here: the company lawyer’s own Z Cloud account. You, HR administrators and other employees cannot read complaints or their emails. Choose the account here, privately; do not write the name in chat. The recipient cannot be a Director, and cannot be changed while the channel is active.'),
+      h('label', {}, 'Recipient account'), rs,
+      h('div', { style: 'margin-top:6px' }, h('button', { class: 's', disabled: !!cd.active, on: { click: function () { rcall('nour_complaints_handler_set', { p_ws: ws, p_handler: rs.value || null }, 'Recipient saved. The test confirmation was reset.') } } }, 'Save recipient')),
+      h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, su.configured ? 'Selected: ' + (su.handler_name || 'account') + (su.email_masked ? ' · test email goes to ' + su.email_masked : ' · this account has no email address') : 'No recipient selected. Complaints sent now would be held, readable by nobody.'),
+      chk(!!su.test_confirmed, 'The recipient confirmed receiving the test email'),
+      h('div', { class: 'mut', dir: 'auto' }, 'Test email status: ' + (su.test_status || 'not sent') + (su.test_error ? ' (' + su.test_error + ')' : '')),
+      h('div', { style: 'margin-top:6px' }, h('button', { class: 's', disabled: !su.configured || !su.email_masked, on: { click: function () { rcall('nour_complaints_test_send', { p_ws: ws }, 'Test email queued. It contains no complaint. The recipient must confirm it in NOUR, Cases tab.') } } }, 'Send test email')),
+      h('div', { class: 'mut', style: 'margin-top:10px' }, 'What you can see: counts only, never complaint text, category, reference or who raised it.'),
+      h('div', { class: 'tiles' }, rtile(sx.open, 'open'), rtile(sx.urgent_open, 'urgent'), rtile(sx.closed, 'closed'), rtile(sx.held_open, 'held (no recipient)'), rtile(sx.oldest_open_days, 'oldest open (days)')),
+      h('div', { style: 'margin-top:8px' }, rout)))
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (cd.active ? 'ok' : 'bad') }, cd.active ? 'Active' : 'Not active'), h('span', { class: 'sp' }), h('button', { class: cd.active ? 'd' : 'p', on: { click: function () { setAct(!cd.active) } } }, cd.active ? 'Switch off' : 'Activate')),
-      chk(!!ck.director_set, 'You are the recipient of ordinary concerns'), chk(!!ck.contact_valid, 'Independent contact set and valid (needed for concerns involving you)'), chk(!!ck.email_ready, 'Complaints mailbox set, access confirmed and test email received (required to activate)'),
-      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Without an independent contact the channel can still open, but a concern about you is held, nobody can see it, and the employee is told the route is not available. Activate only after reviewing the tests.'), h('div', { style: 'margin-top:8px' }, cout)))
+      chk(!!ck.handler_set, 'Recipient selected'), chk(!!ck.handler_email_ok, 'Recipient account has an email address'), chk(!!ck.test_confirmed, 'Recipient confirmed the test email (required to activate)'),
+      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'The channel opens only after the recipient is set and has confirmed the test email. You will never be able to read the complaints. Activate only after you approve the tests.'), h('div', { style: 'margin-top:8px' }, cout)))
     var wout = h('div', {})
     async function setWelcome(v) { var x = await sb.rpc('nour_set_settings', { p_ws: ws, p_patch: { welcome_published: v } }); clear(wout); if (x.error) wout.appendChild(msg('err', x.error.message)); else { wout.appendChild(msg('ok', v ? 'Welcome section published to all employees.' : 'Welcome section hidden from employees.')); var s3 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s3.data || settings; setTimeout(render, 700) } }
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Welcome section on the Z Cloud home page'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.welcome_published ? 'ok' : 'warn') }, settings.welcome_published ? 'Visible to employees' : 'Preview only (you)'), h('span', { class: 'sp' }), h('button', { class: settings.welcome_published ? 'd' : 'p', on: { click: function () { setWelcome(!settings.welcome_published) } } }, settings.welcome_published ? 'Hide from employees' : 'Publish to employees')),
