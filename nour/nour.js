@@ -66,29 +66,17 @@
   function tx() { return T[L.lang] }
 
   function avatarSVG() {
-    var ns = 'http://www.w3.org/2000/svg', d = document.createElement('div'); d.className = 'avwrap'
-    d.innerHTML = '<svg id="nav" viewBox="0 0 200 230" class="nav" aria-label="NOUR"><defs><clipPath id="fc"><ellipse cx="100" cy="108" rx="46" ry="56"/></clipPath></defs>' +
-      '<circle cx="100" cy="115" r="98" class="halo" fill="#0d5fb3" opacity=".12"/>' +
-      '<g class="breathe"><path d="M52 200 Q100 168 148 200 L160 230 L40 230Z" fill="#0d5fb3"/><path d="M84 192 L100 214 L116 192Z" fill="#fcff59"/>' +
-      '<rect x="88" y="150" width="24" height="34" rx="10" fill="#d9a07c"/>' +
-      '<path d="M48 112 Q46 40 100 38 Q154 40 152 112 Q152 150 140 164 L148 120 Q100 90 52 120 L60 164 Q48 150 48 112Z" fill="#14233b"/>' +
-      '<ellipse cx="100" cy="108" rx="46" ry="56" fill="#e8b48f"/>' +
-      '<path d="M54 100 Q62 52 100 50 Q142 52 146 100 Q128 70 100 70 Q74 70 54 100Z" fill="#14233b"/>' +
-      '<circle cx="56" cy="124" r="4" fill="#fcff59"/><circle cx="144" cy="124" r="4" fill="#fcff59"/>' +
-      '<g class="eyes"><ellipse cx="82" cy="108" rx="8" ry="6" fill="#fff"/><ellipse cx="118" cy="108" rx="8" ry="6" fill="#fff"/><circle cx="83" cy="108" r="3.6" fill="#3a2a22"/><circle cx="119" cy="108" r="3.6" fill="#3a2a22"/><circle cx="84.2" cy="106.8" r="1.1" fill="#fff"/><circle cx="120.2" cy="106.8" r="1.1" fill="#fff"/></g>' +
-      '<path d="M72 96 Q82 91 92 96M108 96 Q118 91 128 96" stroke="#14233b" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-      '<path d="M100 112 Q97 126 103 128" stroke="#c98f6b" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-      '<ellipse cx="72" cy="132" rx="8" ry="5" fill="#f19a8f" opacity=".35"/><ellipse cx="128" cy="132" rx="8" ry="5" fill="#f19a8f" opacity=".35"/>' +
-      '<path id="nsm" d="M84 142 Q100 154 116 142" stroke="#9a3b45" stroke-width="3.2" fill="none" stroke-linecap="round"/>' +
-      '<path id="nmo" d="M86 142 Q100 140 114 142 Q100 150 86 142Z" fill="#7a2230" style="display:none"/></g></svg>'
+    var d = document.createElement('div'); d.className = 'avwrap'
+    var bars = ''; for (var i = 0; i < 9; i++) bars += '<i></i>'
+    d.innerHTML = '<div id="nav" class="nav" data-s="idle" role="img" aria-label="NOUR"><div class="halo"></div><img class="portrait" src="nour-portrait.jpg" alt="NOUR, Head of HR" width="512" height="512" decoding="async"></div><div id="nwave" class="wave" aria-hidden="true">' + bars + '</div>'
     return d
   }
+  // The portrait cannot lip-sync (and is never faked to). Speech level drives a waveform and halo instead.
   function setMouth(o) {
     L.mouth = o
-    var sm = document.getElementById('nsm'), mo = document.getElementById('nmo'); if (!sm || !mo) return
-    if (o < 0.07) { sm.style.display = ''; mo.style.display = 'none'; return }
-    sm.style.display = 'none'; mo.style.display = ''
-    mo.setAttribute('d', 'M86 142 Q100 ' + (140 - 2 * o) + ' 114 142 Q100 ' + (146 + 20 * o) + ' 86 142Z')
+    var a = document.getElementById('nav'); if (a) a.style.setProperty('--lv', o.toFixed(2))
+    var w = document.getElementById('nwave'); if (!w) return
+    var k = w.children; for (var i = 0; i < k.length; i++) { var m = 0.35 + 0.65 * Math.abs(Math.sin(i * 1.7 + Date.now() / 140)); k[i].style.transform = 'scaleY(' + (o < 0.07 ? 0.12 : Math.max(0.15, o * m)).toFixed(2) + ')' }
   }
   function setState(s) { L.state = s; var a = document.getElementById('nav'); if (a) a.setAttribute('data-s', s); var st = document.getElementById('nst'); if (st) st.textContent = ({ idle: '', listening: tx().listening, thinking: '…', speaking: '' })[s] || '' }
 
@@ -257,7 +245,15 @@
   }
 
   // ---------- confidential concern ----------
-  function vConcern(main) {
+  async function vConcern(main) {
+    var cs = await sb.rpc('nour_complaints_status', { p_ws: ws })
+    if (cs.error || !cs.data || !cs.data.active) {
+      main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential concerns'), h('div', { dir: 'auto' }, 'This channel is not open yet. It opens once the Director has set and verified the independent contact who handles concerns about leadership.'), h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, 'Until then, please speak to the Director or HR directly. Nothing you type here is sent or stored.')))
+      return
+    }
+    vConcernForm(main)
+  }
+  function vConcernForm(main) {
     var cats = ['workplace_concern', 'conflict', 'unfair_treatment', 'harassment', 'bullying', 'discrimination', 'workload', 'management', 'communication', 'safety']
     var sel = h('select', {}), sum = h('textarea', { dir: 'auto', maxlength: '4000', placeholder: 'Tell NOUR what happened, in your own words.' }), urg = h('input', { type: 'checkbox', style: 'width:auto' }), lead = h('input', { type: 'checkbox', style: 'width:auto' }), out = h('div', {}), btn = h('button', { class: 'p' }, 'Send confidentially')
     cats.forEach(function (c) { sel.appendChild(h('option', { value: c }, c.replace(/_/g, ' '))) })
@@ -351,6 +347,19 @@
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Control'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.enabled && !settings.paused ? 'ok' : 'bad') }, settings.enabled ? (settings.paused ? 'Paused' : 'Running') : 'Off'), h('span', { class: 'sp' }),
       h('button', { class: settings.paused ? 'p' : 'd', on: { click: function () { patch({ paused: !settings.paused }, settings.paused ? 'Resumed' : 'Paused') } } }, settings.paused ? 'Resume NOUR' : 'Pause NOUR')),
       h('label', {}, 'Independent contact for complaints about leadership'), esc, h('div', { style: 'margin-top:8px' }, h('button', { class: 's', on: { click: function () { patch({ escalation_contact: esc.value || null }, 'Contact') } } }, 'Save contact')), h('div', { style: 'margin-top:8px' }, out)))
+    var cst = await sb.rpc('nour_complaints_status', { p_ws: ws }), cd = cst.data || {}, cout = h('div', {})
+    function chk(ok, t) { return h('div', { class: 'row' }, h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, ok ? 'OK' : 'Missing'), h('span', { class: 'mut' }, t)) }
+    async function setAct(v) { var x = await sb.rpc('nour_complaints_set_active', { p_ws: ws, p_active: v }); clear(cout); if (x.error) cout.appendChild(msg('err', x.error.message.replace(/^Cannot activate: /, 'Cannot activate: '))); else { cout.appendChild(msg('ok', v ? 'Confidential complaints are now active.' : 'Confidential complaints are switched off.')); var s2 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s2.data || settings; setTimeout(render, 700) } }
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (cd.active ? 'ok' : 'bad') }, cd.active ? 'Active' : 'Not active'), h('span', { class: 'sp' }), h('button', { class: cd.active ? 'd' : 'p', on: { click: function () { setAct(!cd.active) } } }, cd.active ? 'Switch off' : 'Verify and activate')),
+      chk(!!cd.contact_set, 'Independent contact is set'), chk(!!cd.contact_is_member, 'Contact is a workspace member'), chk(!!cd.contact_independent_of_director, 'Contact is not a Director'),
+      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Concerns about leadership are hidden from the Director and HR and go only to the contact. Changing the contact switches this off until you verify again.'), h('div', { style: 'margin-top:8px' }, cout)))
+    var ping = h('div', { class: 'card' }, h('h3', {}, 'Integrations'), h('div', { class: 'mut' }, 'Checking…'))
+    main.appendChild(ping)
+    ;(async function () {
+      async function p(fn, label, okt, bad) { try { var r = await sb.functions.invoke(fn, { body: { ping: true } }); var d = r.data || {}; return chk(!!d.key_present, label + ': ' + (d.key_present ? okt : bad)) } catch (e) { return chk(false, label + ': not reachable') } }
+      var a = await p('nour-chat', 'AI brain', 'key present (not yet live-tested)', 'key missing, local fallback in use'), b = await p('nour-voice', 'Voice', 'key present (not yet live-tested)', 'key missing, browser voice in use')
+      clear(ping); ping.appendChild(h('h3', {}, 'Integrations')); ping.appendChild(a); ping.appendChild(b)
+    })()
     var c1 = h('div', { class: 'card' }, h('h3', {}, 'Daily job runs'))
     if (!(jr.data || []).length) c1.appendChild(h('div', { class: 'mut' }, 'No runs yet. First run at 06:10 UTC on the next working day.'))
     ;(jr.data || []).forEach(function (j) { c1.appendChild(h('div', { class: 'row' }, h('span', { class: 'pill ' + (j.status === 'success' || j.status === 'ok' ? 'ok' : j.status === 'failed' ? 'bad' : '') }, j.status), h('span', { class: 'mut' }, j.job_key + ' · ' + j.run_date))) })

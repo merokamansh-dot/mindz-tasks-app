@@ -33,15 +33,18 @@ pre{white-space:pre-wrap;margin:6px 0 0;font:12px/1.4 ui-monospace,Menlo,monospa
 .ok{background:#d3ecd9;color:var(--green);padding:10px;border-radius:10px;margin-bottom:10px}
 .priv{font-size:12px;color:var(--mut);margin-top:6px}
 .live{display:flex;flex-direction:column;gap:6px}
-.avwrap{display:flex;justify-content:center;margin-top:2px}
-.nav{width:min(62vw,230px);height:auto}
-.breathe{animation:br 4.2s ease-in-out infinite;transform-origin:100px 200px}@keyframes br{50%{transform:translateY(-2px) scale(1.006)}}
-.eyes{animation:bl 5s infinite;transform-origin:100px 108px}@keyframes bl{0%,94%,100%{transform:scaleY(1)}96.5%{transform:scaleY(.08)}}
-.halo{transform-origin:100px 115px}
-.nav[data-s=listening] .halo{fill:#fcff59;opacity:.55;animation:pu 1.2s ease-in-out infinite}
-.nav[data-s=speaking] .halo{opacity:.3;animation:pu .9s ease-in-out infinite}
-.nav[data-s=thinking] .halo{opacity:.35;animation:pu 1.8s ease-in-out infinite}
+.avwrap{display:flex;flex-direction:column;align-items:center;margin-top:6px;gap:8px}
+.nav{--lv:0;position:relative;width:min(58vw,220px);aspect-ratio:1}
+.nav .portrait{position:relative;width:100%;height:100%;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 4px 18px rgba(2,15,34,.22);animation:br 4.6s ease-in-out infinite}
+@keyframes br{50%{transform:scale(1.012)}}
+.nav .halo{position:absolute;inset:-9px;border-radius:50%;background:var(--blue);opacity:.14;transform:scale(calc(1 + var(--lv)*.06));transition:transform .08s,opacity .3s}
+.nav[data-s=listening] .halo{background:var(--yellow);opacity:.7;animation:pu 1.2s ease-in-out infinite}
+.nav[data-s=speaking] .halo{opacity:.32}
+.nav[data-s=thinking] .halo{opacity:.4;animation:pu 1.8s ease-in-out infinite}
 @keyframes pu{50%{transform:scale(1.07)}}
+.wave{display:flex;gap:4px;align-items:center;height:26px}
+.wave i{display:block;width:5px;height:26px;border-radius:3px;background:var(--blue);transform:scaleY(.12);transition:transform .08s}
+@media (prefers-reduced-motion:reduce){.nav .portrait,.nav .halo{animation:none!important}}
 .nst{text-align:center;color:var(--mut);font-size:13px;min-height:18px}
 .center{text-align:center}.big{font-size:17px;padding:13px 26px;border-radius:14px}
 .live .msgs{max-height:34vh;min-height:90px}.ctl{justify-content:center}.ctl button{padding:8px 12px}
