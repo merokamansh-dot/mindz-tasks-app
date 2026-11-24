@@ -319,13 +319,75 @@
     var days = Math.round((new Date(ds[1]) - new Date(ds[0])) / 864e5) + 1
     await say(ar ? 'تمام، هقدم طلب ' + typed.row.name + ' من ' + ds[0] + ' إلى ' + ds[1] + ' (' + arDays(days) + '). أقدّمه؟ قول أيوه أو لا.' : 'Got it: ' + typed.row.name + ' from ' + ds[0] + ' to ' + ds[1] + ' (' + days + ' day' + (days > 1 ? 's' : '') + '). Shall I submit it? Say yes or no.'); return true
   }
+
+  // ---- Director (manager) commands: NOUR knows Amir (the Director) is her manager and carries out his orders within what the database allows ----
+  function dirName() { var k = Object.keys(roles).filter(function (u) { return roles[u] === 'director' })[0]; var n = k && names[k] ? String(names[k]).split(/\s+/)[0] : ''; return n || 'أمير' }
+  function findPeople(q) { return Object.keys(names).filter(function (u) { var n = nrm(names[u] || ''); if (!n) return false; return n.split(/\s+/).some(function (w) { return w.length > 2 && new RegExp('(^|\\s)' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)').test(q) }) }) }
+  async function loadNotes() { if (L.notes && Date.now() - L.notesAt < 6e4) return L.notes; var r = await sb.from('nour_memory').select('kind,topic,note,detail,day,created_at,shared').eq('workspace_id', ws).order('created_at', { ascending: false }).limit(60); L.notes = r.data || []; L.notesAt = Date.now(); return L.notes }
+  function noteHit(q) { var w = q.split(/\s+/).filter(function (x) { return x.length > 3 }); if (w.length < 2) return null; var best = null, bs = 0
+    ;(L.notes || []).filter(function (n) { return n.kind === 'taught' }).forEach(function (n) { var hay = nrm(n.topic + ' ' + n.note), sc = w.filter(function (x) { return hay.indexOf(x) > -1 }).length; if (sc > bs) { bs = sc; best = n } })
+    return bs >= 2 ? best : null }
+  var AREA = { tasks: ['التاسكات', 'tasks'], briefs: ['البريفات', 'briefs'], crm: ['الـCRM', 'CRM'], sales: ['المبيعات', 'sales'], expenses: ['المصاريف', 'expenses'], quotations: ['عروض الأسعار', 'quotations'], pricing: ['التسعير', 'pricing'], directory: ['الدليل', 'directory'], mail: ['الإيميل', 'mail'], attention: ['التنبيهات', 'alerts'] }
+  async function dirCmd(text, ar, q) {
+    if (!isDir) return false
+    var qt = q.trim()
+    // 1) teach: "اتعلمي ..." / "remember that ..."
+    var tm = /^(اتعلمي|اتعلم|تعلمي|تعلم|تذكري|افتكري|احفظي|سجلي عندك|خدي في بالك|remember|learn|keep in mind|note that|note)(?=\s|$|[:،,.!؟?])[\s:،,]*(?:ان|إن|that)?\s*(.+)$/.exec(text.trim().replace(/\s+/g, ' ').replace(/^(نور|nour)[\s،,]+/i, '')) 
+    if (!tm) tm = /^(?:nour|نور)[\s،,]+(اتعلمي|اتعلم|تعلمي|تذكري|افتكري|احفظي|remember|learn)(?=\s|$|[:،,.!؟?])[\s:،,]*(?:ان|إن|that)?\s*(.+)$/i.exec(text.trim())
+    if (tm && tm[2] && tm[2].length > 3) { var note = tm[2].trim(), topic = note.split(/\s+/).slice(0, 4).join(' ')
+      var r = await sb.rpc('nour_teach', { p_ws: ws, p_topic: topic, p_note: note, p_shared: false }); L.notes = null
+      await say(r.error ? (ar ? 'ماقدرتش أحفظها: ' : 'I could not save it: ') + r.error.message : (ar ? 'تمام يا ' + dirName() + '، اتعلمتها وحفظتها: "' + note.slice(0, 160) + '". هعمل بيها من دلوقتي.' : 'Understood, ' + dirName() + '. I learned and saved it: "' + note.slice(0, 160) + '". I will act on it from now on.')); return true }
+    // 2) what did you learn / what is happening in the system
+    if (/اتعلمتي ايه|اتعلمتي|بتتعلمي|عرفتي ايه|ايه اللي بيحصل|بيحصل ايه|السيستم عامل ايه|حصل ايه|اخبار السيستم|what (did|have) you (learn|learned)|what(.?s| is) (happening|going on|new)|system (activity|status|pulse)|what do you know|what did i teach/.test(q)) {
+      await sb.rpc('nour_learn_now', { p_ws: ws, p_days: 3 }); L.notes = null; var nts = await loadNotes()
+      var lr = nts.filter(function (n) { return n.kind === 'learned' }).sort(function (a, b) { return a.day < b.day ? 1 : -1 }).slice(0, 3), tg = nts.filter(function (n) { return n.kind === 'taught' }).slice(0, 5)
+      var parts = []
+      lr.forEach(function (n) { var d = n.detail || {}, areas = Object.keys(d).filter(function (k) { return k.charAt(0) !== '_' && AREA[k] }).sort(function (a, b) { return d[b].n - d[a].n }).slice(0, 4).map(function (k) { return AREA[k][ar ? 0 : 1] + ' ' + d[k].n })
+        parts.push((ar ? 'يوم ' : 'Day ') + n.day + ': ' + (d._changes || 0) + (ar ? ' تغيير بواسطة ' : ' changes by ') + (d._active_people || 0) + (ar ? ' ناس نشيطين' : ' active people') + (areas.length ? ' (' + areas.join(ar ? '، ' : ', ') + ')' : '')) })
+      var top = lr[0] && lr[0].detail || {}
+      var out = (ar ? 'بتابع السيستم يوميًا. آخر ما لاحظته:\n' : 'I follow the system daily. What I noticed lately:\n') + (parts.length ? parts.join('\n') : (ar ? 'لسه مفيش نشاط مسجل.' : 'No activity recorded yet.'))
+      if (top._pending_leave || top._pending_approvals) out += '\n' + (ar ? 'مستنيين قرارك: ' + (top._pending_leave || 0) + ' طلب إجازة و' + (top._pending_approvals || 0) + ' موافقة.' : 'Waiting for your decision: ' + (top._pending_leave || 0) + ' leave request(s) and ' + (top._pending_approvals || 0) + ' approval(s).')
+      out += '\n' + (tg.length ? (ar ? 'وده اللي علمتهولي: ' : 'And what you taught me: ') + tg.map(function (n) { return '"' + n.note.slice(0, 80) + '"' }).join(ar ? '، ' : '; ') : (ar ? 'لسه ما علمتنيش حاجة بإيدك. قولي "اتعلمي ..." وأنا أحفظها.' : 'You have not taught me anything yet. Say "remember that ..." and I will save it.'))
+      out += '\n' + (ar ? '(بتعلم من أعداد النشاط بس، من غير ما أقرا محتوى حد أو بيانات HR أو الشكاوى.)' : '(I learn from activity counts only, never from anyone’s content, HR data or complaints.)')
+      await say(out); return true }
+    // 3) pending leave list / decide
+    var decA = /^(?:نور[\s،,]+)?(وافقي|اوافقي|اعتمدي|وافق|approve|accept|grant)(?=\s|$|[:،,.!؟?])/.test(qt), decR = /^(?:نور[\s،,]+)?(ارفضي|ارفض|reject|deny|decline)(?=\s|$|[:،,.!؟?])/.test(qt)
+    if (!decA && !decR && /(اجاز|leave|time off)/.test(q) && /(مستنيه|معلقه|معلق|pending|waiting|مين طالب|مين مقدم|who (requested|asked|applied)|requests?\b|الطلبات)/.test(q)) {
+      var pl = (await sb.from('hr_leave_requests').select('id,user_id,start_date,end_date,days,leave_type_id').eq('workspace_id', ws).eq('status', 'pending').order('submitted_at')).data || []
+      if (!pl.length) { await say(ar ? 'مفيش طلبات إجازة مستنية.' : 'No leave requests are waiting.'); return true }
+      var lt = {}; ((await sb.from('hr_leave_types').select('id,name').eq('workspace_id', ws)).data || []).forEach(function (x) { lt[x.id] = x.name })
+      await say((ar ? 'طلبات الإجازة المستنية:\n' : 'Leave requests waiting:\n') + pl.map(function (x) { return '• ' + (names[x.user_id] || '?') + ' — ' + (lt[x.leave_type_id] || '') + ' ' + x.start_date + ' → ' + x.end_date + ' (' + x.days + ')' }).join('\n') + '\n' + (ar ? 'قولي "وافقي على اجازة <الاسم>" أو "ارفضي ..." وأنا أنفذ.' : 'Say "approve <name>’s leave" or "reject ..." and I will do it.')); return true }
+    if ((decA || decR) && /(اجاز|leave|time off|vacation|اجازة)/.test(q) || ((decA || decR) && findPeople(q).length && !/(approval|موافقه)/.test(q))) {
+      var who = findPeople(q), pend = (await sb.from('hr_leave_requests').select('id,user_id,start_date,end_date,days').eq('workspace_id', ws).eq('status', 'pending')).data || []
+      var cand = who.length ? pend.filter(function (x) { return who.indexOf(x.user_id) > -1 }) : pend
+      if (!cand.length) { await say(who.length ? (ar ? 'مفيش طلب إجازة مستني بالاسم ده.' : 'No pending leave request under that name.') : (ar ? 'مفيش طلبات إجازة مستنية.' : 'No leave requests are waiting.')); return true }
+      if (cand.length > 1) { await say((ar ? 'في أكتر من طلب، حدد الاسم:\n' : 'More than one request, tell me which name:\n') + cand.map(function (x) { return '• ' + (names[x.user_id] || '?') + ' ' + x.start_date + ' → ' + x.end_date }).join('\n')); return true }
+      var c = cand[0], dr = await sb.rpc('hr_decide_leave', { p_id: c.id, p_decision: decA ? 'approved' : 'rejected', p_note: null, p_override: false })
+      await say(dr.error ? (ar ? 'ماقدرتش أنفذ: ' : 'I could not do it: ') + dr.error.message : (ar ? (decA ? 'تم، وافقت' : 'تم، رفضت') + ' على إجازة ' + (names[c.user_id] || '') + ' من ' + c.start_date + ' إلى ' + c.end_date + '. الموظف هيتبلّغ بالقرار.' : 'Done. ' + (decA ? 'Approved' : 'Rejected') + ' ' + (names[c.user_id] || '') + '’s leave ' + c.start_date + ' → ' + c.end_date + '. The employee will see the decision.')); return true }
+    // 4) approvals by code
+    var am = /(approve|reject|وافقي|اعتمدي|ارفضي)[^\n]*?\b([a-z]{2,6}-?\d{1,6})(?=\s|$|[:،,.!؟?])/i.exec(text)
+    if (am) { var code = am[2].toUpperCase(), ap = (await sb.from('nour_approvals').select('id,code,action_type,status').eq('workspace_id', ws).eq('status', 'PENDING_APPROVAL')).data || []
+      var hit = ap.filter(function (x) { return String(x.code).toUpperCase().replace('-', '') === code.replace('-', '') })[0]
+      if (!hit) { await say(ar ? 'مش لاقية موافقة مستنية بالكود ده.' : 'I cannot find a pending approval with that code.'); return true }
+      var ok = /approve|وافقي|اعتمدي/i.test(am[1]), xr = await sb.rpc('nour_decide_approval', { p_id: hit.id, p_decision: ok ? 'APPROVED' : 'REJECTED', p_note: null })
+      await say(xr.error ? (ar ? 'ماقدرتش أنفذ: ' : 'I could not do it: ') + xr.error.message : (ar ? 'تم. ' + hit.code + (ok ? ' اتعتمدت.' : ' اترفضت.') : 'Done. ' + hit.code + (ok ? ' approved.' : ' rejected.'))); return true }
+    // 5) remind me / follow up
+    var rm = /^(?:نور[\s،,]+)?(فكريني|فكرني|ذكريني|remind me|follow up|تابعي)(?=\s|$|[:،,.!؟?])[\s:،,]*(?:ب|بـ|to|about|that)?\s*(.+)$/i.exec(text.trim())
+    if (rm && rm[2] && rm[2].length > 2) { var ds2 = parseDates(text), due = ds2.length ? ds2[0] : null
+      var fr = await sb.rpc('nour_followup_add', { p_ws: ws, p_user: me.id, p_title: rm[2].slice(0, 200), p_due: due, p_detail: null, p_via_nour: true })
+      await say(fr.error ? (ar ? 'ماقدرتش أسجلها: ' : 'I could not save it: ') + fr.error.message : (ar ? 'تمام، سجلتها وهفكرك' + (due ? ' يوم ' + due : '') + '.' : 'Noted, I will remind you' + (due ? ' on ' + due : '') + '.')); return true }
+    // 6) taught notes (only when asked about something the Director taught)
+    return false
+  }
   var VARI = { ar: ['تحب أشرحلك حاجة تانية في Z Cloud؟', 'لو في حاجة تانية قولي.', 'عايز تعرف حاجة كمان؟'], en: ['Want me to explain anything else in Z Cloud?', 'Tell me if you need anything else.', 'Anything else you would like to know?'] }
   async function local(text) {
     var ar = /[؀-ۿ]/.test(text), q = nrm(text), t = T[ar ? 'ar' : 'en']
     if (await leaveFlow(text, ar)) return true
-    if (/^(مرحبا|اهلا|هاي|هلا|صباح|مساء|السلام|hi\b|hello|hey|good (morning|evening))/.test(q.trim())) { await say(t.hello(firstName()) + (ar ? 'تحب أساعدك في إيه؟' : 'How can I help?')); return true }
+    if (await dirCmd(text, ar, q)) return true
+    if (/^(مرحبا|اهلا|هاي|هلا|صباح|مساء|السلام|hi\b|hello|hey|good (morning|evening))/.test(q.trim())) { await say(isDir ? (ar ? 'أهلاً يا ' + firstName() + '، أنا نور. تحت أمرك، اطلب أي حاجة وأنا أنفذها، وأي قرار يخصني هرجعلك فيه.' : 'Hello ' + firstName() + ', I am NOUR. At your service: tell me what you need and I will carry it out, and I will come back to you on anything that needs your decision.') : t.hello(firstName()) + (ar ? 'تحب أساعدك في إيه؟' : 'How can I help?')); return true }
     if (/شكرا|thank/.test(q)) { await say(ar ? 'العفو، أنا موجودة.' : 'Anytime.'); return true }
-    if (/مين انت|انتي مين|انت مين|who are you|what are you/.test(q)) { await say(ar ? 'أنا نور، مديرة الموارد البشرية في مايندز. أنا ذكاء اصطناعي: بجهز وبنسق، والقرارات النهائية للإدارة.' : 'I am NOUR, MINDz’s HR manager. I am an AI: I prepare and coordinate, and final decisions stay with management.'); return true }
+    if (/مين مديرك|مين مديرتك|مين رئيسك|مين بيديك اوامر|who.?s your (manager|boss)|who is your (manager|boss)|who do you (report|work) (to|for)/.test(q)) { await say(isDir ? (ar ? 'إنت مديري يا ' + firstName() + '. بترجعلك في أي قرار، وبنفذ اللي تأمرني بيه في حدود صلاحياتي.' : 'You are my manager, ' + firstName() + '. I come back to you on any decision and carry out what you instruct within my permissions.') : (ar ? 'مديري هو ' + dirName() + '، مدير الشركة. بنفذ تعليماته وبرجعله في القرارات المهمة، والقرار النهائي للإدارة.' : 'My manager is ' + dirName() + ', the company Director. I follow his instructions and go back to him on important decisions; final decisions stay with management.')); return true }
+    if (/مين انت|انتي مين|انت مين|who are you|what are you/.test(q)) { await say(isDir ? (ar ? 'أنا نور، مديرة الموارد البشرية في مايندز، وإنت مديري. بنفذ أوامرك وبتابع السيستم يوميًا عشان أفضل فاهمة الشغل.' : 'I am NOUR, MINDz’s HR manager, and you are my manager. I carry out your instructions and follow the system daily so I keep understanding the work.') : ar ? 'أنا نور، مديرة الموارد البشرية في مايندز. أنا ذكاء اصطناعي: بجهز وبنسق، والقرارات النهائية للإدارة.' : 'I am NOUR, MINDz’s HR manager. I am an AI: I prepare and coordinate, and final decisions stay with management.'); return true }
     var o = null
     if (/شكو|قضي|قضا|case|complain|concern|تحرش|تنمر|ظلم|harass|bully|discriminat|ضايق|مضايق|بيزعق|بيهين|اهانه|بيستغل|toxic|insult|picking on|treats me (badly|unfairly)|bothering me|مش مرتاح في الشغل/.test(q)) { o = L.last || await gather()
       if (isHandler) await say(o.cases ? t.cases(o.cases) + (ar ? '. افتح تبويب Cases.' : '. Open the Cases tab.') : (ar ? 'مفيش قضايا مفتوحة.' : 'No open cases.'))
@@ -343,6 +405,7 @@
       await say(ar ? 'أنا نور، مديرة الموارد البشرية هنا. أقدر أشرحلك أي قسم في Z Cloud خطوة خطوة (التاسكات، البريفات، الـCRM، المبيعات، المصاريف، الإيميل، الـHR Suite)، أقولك رصيد إجازاتك وأقدملك طلب إجازة لو قلتلي النوع والتواريخ، أوريك الملخص اليومي، وأوصّلك للجهة الصح لو عندك شكوى أو اقتراح. اسألني زي ما تحب.' : 'I am NOUR, the HR manager here. I can walk you through any part of Z Cloud step by step (tasks, briefs, CRM, sales, expenses, mail, the HR Suite), tell you your leave balance and submit a leave request once you give me the type and dates, show your daily summary, and point you to the right place for a concern or an idea. Just ask.'); return true }
     if (/استقال|هستقيل|عايز استقيل|resign/.test(q)) { await say(ar ? 'ده قرار مهم، وأنا موجودة أسمعك. الاستقالة بتتقدم رسميًا لـHR من HR Requests في الـHR Suite، وبتتراجع مع مديرك والإدارة. لو حابب نتكلم الأول عن اللي مضايقك قولي.' : 'That is a big decision, and I am here to listen. A resignation is submitted to HR through HR Requests in the HR Suite and reviewed with your manager and management. If you would like to talk through what is behind it first, tell me.'); return true }
     var kb = (bal || leaveQ) ? null : kbFind(text)
+    if (!kb && !bal && !leaveQ) { await loadNotes(); var nh = noteHit(q); if (nh) { await say((ar ? 'حسب اللي اتعلمته: ' : 'From what I was taught: ') + nh.note); return true } }
     if (kb) { L.fbN = 0; await say((ar ? kb.ar : kb.en) + ' ' + VARI[ar ? 'ar' : 'en'][(L.vi = ((L.vi || 0) + 1) % 3)]); return true }
     if (leaveQ || bal) { o = L.last || await gather(); var bl = (o.ctx && o.ctx.leave_balances || []).filter(function (x) { return x.remaining != null }), ty2 = pickType(bl, q)
       var one = ty2.want && ty2.row ? [ty2.row] : bl
@@ -353,6 +416,7 @@
   }
   function fallbackText(text) {
     var ar = /[؀-ۿ]/.test(text); L.fbN = (L.fbN || 0) + 1
+    if (isDir) return ar ? 'تحت أمرك. الأوامر اللي أنفذها دلوقتي: "اتعلمي ..." (أحفظ قاعدة أو معلومة)، "اتعلمتي ايه؟" (اللي لاحظته في السيستم)، "الاجازات المستنية"، "وافقي/ارفضي على اجازة <الاسم>"، "فكريني ..." ورصيد الإجازات وشرح أي قسم. الأوامر الحرة المعقدة محتاجة تشغيل العقل الكامل (AI) وده لسه مش متفعل.' : 'At your service. Orders I can carry out now: "remember that ...", "what did you learn?", "pending leave", "approve/reject <name>’s leave", "remind me to ...", leave balances and explaining any section. Complex free-form orders need the full AI brain, which is not switched on yet.'
     if (ar) return L.fbN % 2 ? 'مش متأكدة فهمت قصدك. تقدر تسألني عن شرح أي قسم في Z Cloud (التاسكات، البريفات، الـCRM، المبيعات، المصاريف، الإيميل، الـHR Suite)، أو عن رصيد إجازاتك، أو تقولي مثلاً: إجازة اعتيادية من 15-12 لـ 30-12.' : 'لسه مش فاهمة بالظبط. جرّب تصيغها بشكل تاني، مثلاً: "ازاي أضيف تاسك؟" أو "رصيد إجازاتي" أو "ازاي أقدم مصروف؟".'
     return L.fbN % 2 ? 'I am not sure I got that. You can ask me how any part of Z Cloud works (tasks, briefs, CRM, sales, expenses, mail, the HR Suite), ask about your leave balance, or say for example: annual leave from 15-12 to 30-12.' : 'I still did not catch it. Try wording it differently, for example: "how do I add a task?", "my leave balance" or "how do I submit an expense?".'
   }
