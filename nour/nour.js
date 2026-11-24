@@ -38,8 +38,8 @@
   }
 
   var TABS = function () {
-    var t = [['chat', 'NOUR Live'], ['me', 'My HR'], ['concern', 'Confidential']]
-    if (isHR) t.push(['approvals', 'Approvals'], ['cases', 'Cases'], ['team', 'Team'])
+    var t = [['chat', 'NOUR Live'], ['me', 'My HR'], ['life', 'My tasks'], ['concern', 'Confidential']]
+    if (isHR) t.push(['approvals', 'Approvals'], ['cases', 'Cases'], ['team', 'Team'], ['people', 'Lifecycle'])
     if (isDir) t.push(['admin', 'Control'])
     return t
   }
@@ -53,7 +53,7 @@
     var main = h('main', {}); app.appendChild(main)
     if (!settings.enabled) main.appendChild(msg('err', 'NOUR is switched off for this workspace.'))
     else if (settings.paused) main.appendChild(msg('err', 'NOUR is paused by the Director. Data is visible, new AI actions are blocked.'))
-    ;({ chat: vChat, me: vMe, concern: vConcern, approvals: vApprovals, cases: vCases, team: vTeam, admin: vAdmin })[tab](main)
+    ;({ chat: vChat, me: vMe, concern: vConcern, approvals: vApprovals, cases: vCases, team: vTeam, life: vMyLife, people: vPeople, admin: vAdmin })[tab](main)
   }
 
   // ---------- NOUR live: face, voice, proactive ----------
@@ -353,6 +353,7 @@
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (cd.active ? 'ok' : 'bad') }, cd.active ? 'Active' : 'Not active'), h('span', { class: 'sp' }), h('button', { class: cd.active ? 'd' : 'p', on: { click: function () { setAct(!cd.active) } } }, cd.active ? 'Switch off' : 'Verify and activate')),
       chk(!!cd.contact_set, 'Independent contact is set'), chk(!!cd.contact_is_member, 'Contact is a workspace member'), chk(!!cd.contact_independent_of_director, 'Contact is not a Director'),
       h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Concerns about leadership are hidden from the Director and HR and go only to the contact. Changing the contact switches this off until you verify again.'), h('div', { style: 'margin-top:8px' }, cout)))
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Automatic check-ins'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.checkins_enabled ? 'ok' : 'bad') }, settings.checkins_enabled ? 'On' : 'Off'), h('span', { class: 'sp' }), h('button', { class: settings.checkins_enabled ? 'd' : 'p', on: { click: function () { patch({ checkins_enabled: !settings.checkins_enabled }, 'Check-ins setting') } } }, settings.checkins_enabled ? 'Turn off' : 'Turn on')), h('div', { class: 'mut', dir: 'auto' }, 'When on, NOUR sends a 30-day and 90-day check-in to each new employee and a monthly check-in to everyone, with reminders. Answers are visible to HR and the Director. Off by default.')))
     var ping = h('div', { class: 'card' }, h('h3', {}, 'Integrations'), h('div', { class: 'mut' }, 'Checking…'))
     main.appendChild(ping)
     ;(async function () {
@@ -367,6 +368,151 @@
     var c2 = h('div', { class: 'card' }, h('h3', {}, 'Activity log'))
     ;(ac.data || []).forEach(function (a) { c2.appendChild(h('div', { class: 'mut', style: 'margin:3px 0' }, when(a.at) + ' · ' + (a.via === 'nour' ? 'NOUR' : nm(a.actor_id)) + ' · ' + a.action.replace(/_/g, ' '))) })
     main.appendChild(c2)
+  }
+
+
+  // ---------- lifecycle (recruitment, contracts, onboarding, training, offboarding, check-ins) ----------
+  var sub = 'recruit'
+  function today() { return new Date().toISOString().slice(0, 10) }
+  function fld(label, el) { return h('div', {}, h('label', {}, label), el) }
+  function empSel() { var s = h('select', {}); Object.keys(names).forEach(function (id) { s.appendChild(h('option', { value: id }, nm(id))) }); return s }
+  function dt(v) { return v ? String(v).slice(0, 10) : '—' }
+  async function act(out, fn, args, okText) {
+    var x = await sb.rpc(fn, args); clear(out)
+    if (x.error) { out.appendChild(msg('err', x.error.message)); return false }
+    out.appendChild(msg('ok', okText || 'Done.')); setTimeout(render, 500); return true
+  }
+  function btn(label, cls, fn) { return h('button', { class: cls || 's', on: { click: fn } }, label) }
+
+  async function vMyLife(main) {
+    main.appendChild(h('div', { class: 'boot' }, 'Loading…'))
+    var q = await Promise.all([
+      sb.from('nour_checkins').select('*').eq('workspace_id', ws).eq('user_id', me.id).order('sent_at', { ascending: false }).limit(10),
+      sb.from('nour_tasks').select('*').eq('workspace_id', ws).eq('status', 'open').order('due_date', { ascending: true }).limit(100),
+      sb.from('nour_training').select('*').eq('workspace_id', ws).eq('user_id', me.id).order('created_at', { ascending: false }).limit(20),
+      sb.from('nour_contracts').select('*').eq('workspace_id', ws).eq('user_id', me.id).order('start_date', { ascending: false }).limit(3),
+      sb.from('nour_resignations').select('*').eq('workspace_id', ws).eq('user_id', me.id).in('status', ['submitted', 'acknowledged']).limit(1)])
+    clear(main)
+    var chk = q[0].data || [], tasks = (q[1].data || []).filter(function (t) { return t.assignee_id === me.id || t.user_id === me.id }), tr = q[2].data || [], ct = q[3].data || [], rs = (q[4].data || [])[0]
+    var pend = chk.filter(function (c) { return c.status === 'sent' })
+    pend.forEach(function (c) {
+      var mood = 0, out = h('div', {}), com = h('textarea', { dir: 'auto', maxlength: '1500', placeholder: 'Anything you want us to know (optional)' }), want = h('input', { type: 'checkbox', style: 'width:auto' }), row = h('div', { class: 'row' })
+      for (var i = 1; i <= 5; i++) (function (n) { var b = h('button', { class: 's', on: { click: function () { mood = n; Array.prototype.forEach.call(row.children, function (x, j) { x.className = j + 1 === n ? 'p' : 's' }) } } }, String(n)); row.appendChild(b) })(i)
+      main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'A check-in from NOUR'), h('div', { dir: 'auto' }, c.prompt), h('div', { class: 'mut' }, '1 = not good, 5 = great. Your answer is visible to HR and the Director.'), row, h('label', {}, 'Comment'), com,
+        h('label', { class: 'row' }, want, 'I would like someone from HR to talk to me'),
+        h('div', { style: 'margin-top:8px' }, btn('Send answer', 'p', function () { if (!mood) { clear(out); out.appendChild(msg('err', 'Please pick 1 to 5.')); return } act(out, 'nour_checkin_respond', { p_id: c.id, p_mood: mood, p_comment: com.value, p_wants_hr: want.checked }, 'Thank you. Your answer was sent.') })), h('div', { style: 'margin-top:8px' }, out)))
+    })
+    var tc = h('div', { class: 'card' }, h('h3', {}, 'My tasks'))
+    if (!tasks.length) tc.appendChild(h('div', { class: 'mut' }, 'Nothing is waiting for you.'))
+    tasks.forEach(function (t) {
+      var late = t.due_date && t.due_date < today(), mine = t.assignee_id === me.id, out = h('span', {})
+      tc.appendChild(h('div', { class: 'row', style: 'margin:6px 0' }, h('div', { style: 'flex:1', dir: 'auto' }, h('div', {}, t.title), h('div', { class: 'mut' }, (t.user_id !== me.id ? 'About ' + nm(t.user_id) + ' · ' : '') + 'due ' + dt(t.due_date))), late ? h('span', { class: 'pill bad' }, 'Overdue') : null,
+        (mine && (!t.human_only || isHR)) ? btn('Done', 'p', function () { act(out, 'nour_task_complete', { p_id: t.id }, 'Marked done.') }) : null, out))
+    })
+    main.appendChild(tc)
+    if (tr.length) { var trc = h('div', { class: 'card' }, h('h3', {}, 'My training')); tr.forEach(function (t) { var out = h('span', {}); trc.appendChild(h('div', { class: 'row', style: 'margin:6px 0' }, h('div', { style: 'flex:1', dir: 'auto' }, h('div', {}, t.title), h('div', { class: 'mut' }, (t.provider || '') + ' · due ' + dt(t.due_date))), h('span', { class: 'pill' + (t.status === 'completed' ? ' ok' : '') }, t.status.replace('_', ' ')), t.status === 'planned' ? btn('Start', 's', function () { act(out, 'nour_training_status', { p_id: t.id, p_status: 'in_progress' }) }) : null, (t.status === 'planned' || t.status === 'in_progress') ? btn('Completed', 'p', function () { act(out, 'nour_training_status', { p_id: t.id, p_status: 'completed' }) }) : null, out)) }); main.appendChild(trc) }
+    if (ct.length) main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'My contract dates'), ct.map(function (c) { return h('div', { class: 'mut' }, c.contract_type.replace('_', ' ') + ' · starts ' + dt(c.start_date) + ' · ends ' + dt(c.end_date) + ' · probation ends ' + dt(c.probation_end) + ' · ' + c.status) })))
+    // resignation
+    var rc = h('div', { class: 'card' }, h('h3', {}, 'Resignation')), rout = h('div', {})
+    if (rs) {
+      rc.appendChild(h('div', { dir: 'auto' }, 'Your resignation is ' + rs.status + '. Last working day: ' + dt(rs.last_working_day) + '.'))
+      rc.appendChild(h('div', { style: 'margin-top:8px' }, btn('Withdraw resignation', 'd', function () { act(rout, 'nour_resignation_withdraw', { p_id: rs.id }, 'Withdrawn.') })))
+    } else {
+      var ld = h('input', { type: 'date', min: today() }), rr = h('textarea', { dir: 'auto', maxlength: '2000', placeholder: 'Reason (optional, visible to HR and the Director only)' }), armed = false, sb2
+      sb2 = btn('Submit resignation', 'd', function () { if (!ld.value) { clear(rout); rout.appendChild(msg('err', 'Pick your last working day.')); return } if (!armed) { armed = true; sb2.textContent = 'Tap again to confirm'; return } act(rout, 'nour_resignation_submit', { p_ws: ws, p_last_day: ld.value, p_reason: rr.value }, 'Submitted. HR will contact you.') })
+      rc.appendChild(h('div', { class: 'mut', dir: 'auto' }, 'Only use this to resign formally. HR and the Director will be notified.')); rc.appendChild(fld('Last working day', ld)); rc.appendChild(fld('Reason', rr)); rc.appendChild(h('div', { style: 'margin-top:8px' }, sb2))
+    }
+    rc.appendChild(h('div', { style: 'margin-top:8px' }, rout)); main.appendChild(rc)
+    var done = chk.filter(function (c) { return c.status === 'answered' })
+    if (done.length) main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'My past check-ins'), done.map(function (c) { return h('div', { class: 'mut' }, dt(c.answered_at) + ' · mood ' + c.mood + '/5') })))
+  }
+
+  async function vPeople(main) {
+    var subs = [['recruit', 'Recruitment'], ['contracts', 'Contracts'], ['tasks', 'Tasks & onboarding'], ['training', 'Training'], ['off', 'Offboarding'], ['checkins', 'Check-ins']]
+    var bar = h('div', { class: 'row', style: 'flex-wrap:wrap;margin-bottom:8px' })
+    subs.forEach(function (x) { bar.appendChild(btn(x[1], sub === x[0] ? 'p' : 's', function () { sub = x[0]; render() })) })
+    main.appendChild(bar)
+    var body = h('div', {}); main.appendChild(body); body.appendChild(h('div', { class: 'boot' }, 'Loading…'))
+    await ({ recruit: pRecruit, contracts: pContracts, tasks: pTasks, training: pTraining, off: pOff, checkins: pChecks })[sub](body)
+  }
+
+  async function pRecruit(b) {
+    var r = await sb.from('nour_candidates').select('*').eq('workspace_id', ws).order('created_at', { ascending: false }).limit(100); clear(b)
+    var n = h('input', { placeholder: 'Full name', maxlength: '120', dir: 'auto' }), em = h('input', { placeholder: 'Email', type: 'email' }), ph = h('input', { placeholder: 'Phone' }), po = h('input', { placeholder: 'Position', maxlength: '120', dir: 'auto' }), so = h('input', { placeholder: 'Source (LinkedIn, referral…)' }), out = h('div', {})
+    b.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Add candidate'), n, em, ph, po, so, h('div', { style: 'margin-top:8px' }, btn('Add', 'p', function () { act(out, 'nour_candidate_add', { p_ws: ws, p_name: n.value, p_email: em.value, p_phone: ph.value, p_position: po.value, p_source: so.value }, 'Candidate added.') })), h('div', { style: 'margin-top:8px' }, out), h('div', { class: 'priv' }, 'Candidate data is visible to HR and the Director only. Offer and hire decisions are the Director\'s.')))
+    if (r.error) { b.appendChild(msg('err', r.error.message)); return }
+    var order = ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected', 'withdrawn']
+    order.forEach(function (st) {
+      var rows = r.data.filter(function (c) { return c.stage === st }); if (!rows.length) return
+      var card = h('div', { class: 'card' }, h('h3', {}, st[0].toUpperCase() + st.slice(1) + ' (' + rows.length + ')'))
+      rows.forEach(function (c) {
+        var o2 = h('span', {}), nx = order[order.indexOf(c.stage) + 1], closed = ['hired', 'rejected', 'withdrawn'].indexOf(c.stage) > -1, note = h('input', { placeholder: 'Note (optional)', dir: 'auto' })
+        var canNext = !closed && nx && ['hired', 'rejected', 'withdrawn'].indexOf(nx) < 0 && ((nx !== 'offer') || isDir)
+        var row = h('div', { style: 'margin:8px 0;border-top:1px solid var(--line);padding-top:8px' }, h('div', { dir: 'auto' }, h('b', {}, c.full_name), ' · ' + c.position + ' · ' + c.code), h('div', { class: 'mut' }, [c.email, c.phone, c.source].filter(Boolean).join(' · ')), c.notes ? h('div', { class: 'mut', dir: 'auto' }, c.notes) : null)
+        if (!closed) {
+          row.appendChild(note)
+          var rw = h('div', { class: 'row', style: 'margin-top:6px;flex-wrap:wrap' })
+          if (canNext) rw.appendChild(btn('Move to ' + nx, 'p', function () { act(o2, 'nour_candidate_set_stage', { p_id: c.id, p_stage: nx, p_note: note.value }) }))
+          if (c.stage === 'offer' && isDir) rw.appendChild(btn('Mark hired (Director)', 'p', function () { act(o2, 'nour_candidate_set_stage', { p_id: c.id, p_stage: 'hired', p_note: note.value }) }))
+          rw.appendChild(btn('Add note', 's', function () { act(o2, 'nour_candidate_note', { p_id: c.id, p_note: note.value }, 'Note added.') }))
+          rw.appendChild(btn('Reject', 'd', function () { act(o2, 'nour_candidate_set_stage', { p_id: c.id, p_stage: 'rejected', p_note: note.value }) }))
+          rw.appendChild(btn('Withdrawn', 's', function () { act(o2, 'nour_candidate_set_stage', { p_id: c.id, p_stage: 'withdrawn', p_note: note.value }) })); row.appendChild(rw)
+        }
+        row.appendChild(o2); card.appendChild(row)
+      }); b.appendChild(card)
+    })
+    if (!r.data.length) b.appendChild(h('div', { class: 'card mut' }, 'No candidates yet.'))
+  }
+
+  async function pContracts(b) {
+    var r = await sb.from('nour_contracts').select('*').eq('workspace_id', ws).order('start_date', { ascending: false }).limit(100); clear(b)
+    var e = empSel(), ty = h('select', {}), st = h('input', { type: 'date', value: today() }), en = h('input', { type: 'date' }), pe = h('input', { type: 'date' }), no = h('input', { placeholder: 'Notes (no salary here)', maxlength: '1000', dir: 'auto' }), out = h('div', {})
+    ;['probation', 'fixed_term', 'indefinite', 'internship', 'freelance', 'other'].forEach(function (t) { ty.appendChild(h('option', { value: t }, t.replace('_', ' '))) })
+    b.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Record a contract'), fld('Employee', e), fld('Type', ty), fld('Start', st), fld('End (optional)', en), fld('Probation end (blank = start + probation days from Control)', pe), no,
+      h('div', { style: 'margin-top:8px' }, btn('Save contract', 'p', function () { act(out, 'nour_contract_save', { p_ws: ws, p_user: e.value, p_type: ty.value, p_start: st.value, p_end: en.value || null, p_probation_end: pe.value || null, p_notes: no.value }, 'Contract recorded.') })), h('div', { style: 'margin-top:8px' }, out), h('div', { class: 'priv' }, 'Dates only. Salary and compensation are never shown or stored here. Probation outcomes are human decisions.')))
+    if (r.error) { b.appendChild(msg('err', r.error.message)); return }
+    var c = h('div', { class: 'card' }, h('h3', {}, 'Contracts')); if (!r.data.length) c.appendChild(h('div', { class: 'mut' }, 'None recorded yet.'))
+    r.data.forEach(function (k) { var o2 = h('span', {}); c.appendChild(h('div', { class: 'row', style: 'margin:6px 0' }, h('div', { style: 'flex:1' }, h('b', {}, nm(k.user_id)), h('div', { class: 'mut' }, k.contract_type.replace('_', ' ') + ' · ' + dt(k.start_date) + ' → ' + dt(k.end_date) + ' · probation ends ' + dt(k.probation_end))), h('span', { class: 'pill' + (k.status === 'active' ? ' ok' : '') }, k.status), k.status === 'active' ? btn('End', 's', function () { act(o2, 'nour_contract_set_status', { p_id: k.id, p_status: 'ended' }) }) : null, (k.status === 'active' && isDir) ? btn('Terminated', 'd', function () { act(o2, 'nour_contract_set_status', { p_id: k.id, p_status: 'terminated' }) }) : null, o2)) })
+    b.appendChild(c)
+  }
+
+  async function pTasks(b) {
+    var r = await sb.from('nour_tasks').select('*').eq('workspace_id', ws).eq('status', 'open').order('due_date', { ascending: true }).limit(200); clear(b)
+    var e = empSel(), out = h('div', {}), e2 = empSel(), t = h('input', { placeholder: 'Task title', maxlength: '200', dir: 'auto' }), a = empSel(), d = h('input', { type: 'date' }), ho = h('input', { type: 'checkbox', style: 'width:auto' }), o3 = h('div', {}), k = h('select', {})
+    ;['other', 'document', 'onboarding', 'probation', 'training', 'offboarding', 'contract'].forEach(function (x) { k.appendChild(h('option', { value: x }, x)) }); a.value = me.id
+    b.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Start onboarding'), h('div', { class: 'mut' }, 'Creates the standard checklist (documents, welcome, access, policies). Safe to repeat: nothing is duplicated.'), e, h('div', { style: 'margin-top:8px' }, btn('Start onboarding', 'p', function () { act(out, 'nour_onboarding_start', { p_ws: ws, p_user: e.value }, 'Onboarding checklist created.') })), h('div', { style: 'margin-top:8px' }, out)))
+    b.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Add a task'), fld('About employee', e2), fld('Kind', k), t, fld('Assigned to', a), fld('Due', d), h('label', { class: 'row' }, ho, 'Human only (NOUR never completes it)'),
+      h('div', { style: 'margin-top:8px' }, btn('Add task', 'p', function () { act(o3, 'nour_task_add', { p_ws: ws, p_user: e2.value, p_kind: k.value, p_title: t.value, p_detail: null, p_assignee: a.value, p_due: d.value || null, p_human_only: ho.checked }, 'Task added.') })), h('div', { style: 'margin-top:8px' }, o3)))
+    if (r.error) { b.appendChild(msg('err', r.error.message)); return }
+    var c = h('div', { class: 'card' }, h('h3', {}, 'Open tasks (' + r.data.length + ')')); if (!r.data.length) c.appendChild(h('div', { class: 'mut' }, 'No open tasks.'))
+    r.data.forEach(function (x) { var o2 = h('span', {}), late = x.due_date && x.due_date < today(); c.appendChild(h('div', { style: 'margin:8px 0;border-top:1px solid var(--line);padding-top:8px' }, h('div', { dir: 'auto' }, h('b', {}, x.title)), h('div', { class: 'mut' }, 'About ' + nm(x.user_id) + ' · ' + x.kind + ' · for ' + nm(x.assignee_id) + ' · due ' + dt(x.due_date) + (x.human_only ? ' · human only' : '') + (x.escalated_at ? ' · escalated' : '')), h('div', { class: 'row', style: 'margin-top:4px' }, late ? h('span', { class: 'pill bad' }, 'Overdue') : null, btn('Done', 'p', function () { act(o2, 'nour_task_complete', { p_id: x.id }) }), btn('Cancel', 's', function () { act(o2, 'nour_task_cancel', { p_id: x.id }) }), o2))) })
+    b.appendChild(c)
+  }
+
+  async function pTraining(b) {
+    var r = await sb.from('nour_training').select('*').eq('workspace_id', ws).order('created_at', { ascending: false }).limit(100); clear(b)
+    var e = empSel(), t = h('input', { placeholder: 'Course / development item', maxlength: '200', dir: 'auto' }), p = h('input', { placeholder: 'Provider (optional)' }), d = h('input', { type: 'date' }), out = h('div', {})
+    b.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Assign training'), fld('Employee', e), t, p, fld('Due', d), h('div', { style: 'margin-top:8px' }, btn('Assign', 'p', function () { act(out, 'nour_training_add', { p_ws: ws, p_user: e.value, p_title: t.value, p_provider: p.value, p_due: d.value || null }, 'Assigned. The employee was notified.') })), h('div', { style: 'margin-top:8px' }, out)))
+    var c = h('div', { class: 'card' }, h('h3', {}, 'Training')); if (!(r.data || []).length) c.appendChild(h('div', { class: 'mut' }, 'None assigned yet.'))
+    ;(r.data || []).forEach(function (x) { var o2 = h('span', {}); c.appendChild(h('div', { class: 'row', style: 'margin:6px 0' }, h('div', { style: 'flex:1', dir: 'auto' }, h('b', {}, x.title), h('div', { class: 'mut' }, nm(x.user_id) + ' · due ' + dt(x.due_date))), h('span', { class: 'pill' + (x.status === 'completed' ? ' ok' : '') }, x.status.replace('_', ' ')), (x.status === 'planned' || x.status === 'in_progress') ? btn('Cancel', 's', function () { act(o2, 'nour_training_status', { p_id: x.id, p_status: 'cancelled' }) }) : null, o2)) })
+    b.appendChild(c)
+  }
+
+  async function pOff(b) {
+    var r = await sb.from('nour_resignations').select('*').eq('workspace_id', ws).order('created_at', { ascending: false }).limit(50); clear(b)
+    var c = h('div', { class: 'card' }, h('h3', {}, 'Resignations and offboarding')); if (!(r.data || []).length) c.appendChild(h('div', { class: 'mut' }, 'None.'))
+    ;(r.data || []).forEach(function (x) { var o2 = h('div', {}); c.appendChild(h('div', { style: 'margin:8px 0;border-top:1px solid var(--line);padding-top:8px' }, h('div', {}, h('b', {}, nm(x.user_id)), ' · ' + x.status), h('div', { class: 'mut' }, 'Submitted ' + dt(x.submitted_on) + ' · last day ' + dt(x.last_working_day)), x.reason ? h('div', { class: 'mut', dir: 'auto' }, 'Reason: ' + x.reason) : null,
+      h('div', { class: 'row', style: 'margin-top:4px' }, x.status === 'submitted' ? btn('Acknowledge and start offboarding', 'p', function () { act(o2, 'nour_resignation_ack', { p_id: x.id }, 'Acknowledged. Offboarding tasks were created.') }) : null, (x.status === 'acknowledged' && isDir) ? btn('Close offboarding (Director)', 'p', function () { act(o2, 'nour_resignation_complete', { p_id: x.id }, 'Offboarding closed.') }) : null), o2)) })
+    b.appendChild(c); b.appendChild(h('div', { class: 'priv' }, 'Access removal, final settlement and clearance are human-only tasks. NOUR prepares them but never executes them.'))
+  }
+
+  async function pChecks(b) {
+    var r = await sb.from('nour_checkins').select('*').eq('workspace_id', ws).order('sent_at', { ascending: false }).limit(100); clear(b)
+    var e = empSel(), out = h('div', {})
+    b.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Send a check-in'), h('div', { class: 'mut' }, 'Automatic 30/90-day and monthly check-ins are ' + (settings.checkins_enabled ? 'ON' : 'OFF') + ' (Director setting in Control).'), e, h('div', { style: 'margin-top:8px' }, btn('Send check-in', 'p', function () { act(out, 'nour_checkin_send', { p_ws: ws, p_user: e.value }, 'Sent.') })), h('div', { style: 'margin-top:8px' }, out)))
+    var c = h('div', { class: 'card' }, h('h3', {}, 'Check-ins')); if (!(r.data || []).length) c.appendChild(h('div', { class: 'mut' }, 'None yet.'))
+    ;(r.data || []).forEach(function (x) { c.appendChild(h('div', { style: 'margin:6px 0;border-top:1px solid var(--line);padding-top:6px' }, h('div', {}, h('b', {}, nm(x.user_id)), ' · ' + x.kind + ' · ', h('span', { class: 'pill' + (x.status === 'answered' ? (x.mood <= 2 ? ' bad' : ' ok') : '') }, x.status === 'answered' ? 'mood ' + x.mood + '/5' : x.status)), x.comment ? h('div', { class: 'mut', dir: 'auto' }, x.comment) : null, x.wants_hr ? h('div', { class: 'mut' }, 'Asked to talk to HR') : null)) })
+    b.appendChild(c)
   }
 
   boot().catch(function (e) { fatal('Something went wrong: ' + (e && e.message || e)) })
