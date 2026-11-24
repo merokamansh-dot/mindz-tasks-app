@@ -5022,6 +5022,10 @@ dompurify/dist/purify.cjs.js:
       var hay = nrm(row.subject); sc += words.filter(function (w) { return hay.indexOf(w) > -1 }).length
       if (sc > bs) { bs = sc; best = row } })
     return bs >= 2 ? best : null }
+  // Review loop: what NOUR was unsure about (pending, with the asker so the answer can come back on the bell) and what she answered from knowledge (answered, no name), so the Director's reviewer can correct her. Sensitive topics are never logged.
+  var SENS = /شكو|تحرش|تنمر|ظلم|اهان|استقال|مرتب|راتب|فلوس|عقوب|انذار|جزاء|فصل|ضغط نفسي|harass|bully|discriminat|complain|resign|salary|payroll|warning|dismiss|fired|\d{7,}/
+  function lastNour() { for (var i = chat.length - 1; i >= 0; i--) if (chat[i].role === 'assistant') return chat[i].content; return '' }
+  function logReview(text, answer, kind) { try { if (!text || text.length < 6) return; if (SENS.test(nrm(text))) return; sb.rpc('nour_review_log', { p_ws: ws, p_q: text, p_a: answer || '', p_kind: kind }) } catch (e) {} }
   function logUnanswered(text) { try { if (text && text.length > 5) sb.rpc('nour_question_log', { p_ws: ws, p_text: text }) } catch (e) {} }
   async function dirCmd(text, ar, q) {
     if (!isDir) return false
@@ -5117,9 +5121,9 @@ dompurify/dist/purify.cjs.js:
       await say(ar ? 'أنا نور، مديرة الموارد البشرية هنا. أقدر أشرحلك أي قسم في Z Cloud خطوة خطوة (التاسكات، البريفات، الـCRM، المبيعات، المصاريف، الإيميل، الـHR Suite)، أقولك رصيد إجازاتك وأقدملك طلب إجازة لو قلتلي النوع والتواريخ، أوريك الملخص اليومي، وأوصّلك للجهة الصح لو عندك شكوى أو اقتراح. اسألني زي ما تحب.' : 'I am NOUR, the HR manager here. I can walk you through any part of Z Cloud step by step (tasks, briefs, CRM, sales, expenses, mail, the HR Suite), tell you your leave balance and submit a leave request once you give me the type and dates, show your daily summary, and point you to the right place for a concern or an idea. Just ask.'); return true }
     if (/استقال|هستقيل|عايز استقيل|resign/.test(q)) { await say(ar ? 'ده قرار مهم، وأنا موجودة أسمعك. الاستقالة بتتقدم رسميًا لـHR من HR Requests في الـHR Suite، وبتتراجع مع مديرك والإدارة. لو حابب نتكلم الأول عن اللي مضايقك قولي.' : 'That is a big decision, and I am here to listen. A resignation is submitted to HR through HR Requests in the HR Suite and reviewed with your manager and management. If you would like to talk through what is behind it first, tell me.'); return true }
     var kb = (bal || leaveQ) ? null : kbFind(text)
-    if (!kb && !bal && !leaveQ) { await loadNotes(); var nh = noteHit(q); if (nh) { await say((ar ? 'حسب اللي اتعلمته: ' : 'From what I was taught: ') + nh.note); return true } }
-    if (!kb && !bal && !leaveQ) { await loadDbKb(); var dk = dbKbFind(q); if (dk) { L.fbN = 0; await say((ar ? (dk.lang_ar || dk.interpretation) : dk.interpretation) + (dk.needs_counsel ? (ar ? ' (ده مبدأ عام، والقرار القانوني بيتأكد مع المستشار.)' : ' (General guidance: confirm legal points with counsel.)') : '')); return true } }
-    if (kb) { L.fbN = 0; await say((ar ? kb.ar : kb.en) + ' ' + VARI[ar ? 'ar' : 'en'][(L.vi = ((L.vi || 0) + 1) % 3)]); return true }
+    if (!kb && !bal && !leaveQ) { await loadNotes(); var nh = noteHit(q); if (nh) { L.viaKb = 1; await say((ar ? 'حسب اللي اتعلمته: ' : 'From what I was taught: ') + nh.note); return true } }
+    if (!kb && !bal && !leaveQ) { await loadDbKb(); var dk = dbKbFind(q); if (dk) { L.viaKb = 1; L.fbN = 0; await say((ar ? (dk.lang_ar || dk.interpretation) : dk.interpretation) + (dk.needs_counsel ? (ar ? ' (ده مبدأ عام، والقرار القانوني بيتأكد مع المستشار.)' : ' (General guidance: confirm legal points with counsel.)') : '')); return true } }
+    if (kb) { L.viaKb = 1; L.fbN = 0; await say((ar ? kb.ar : kb.en) + ' ' + VARI[ar ? 'ar' : 'en'][(L.vi = ((L.vi || 0) + 1) % 3)]); return true }
     if (leaveQ || bal) { o = L.last || await gather(); var bl = (o.ctx && o.ctx.leave_balances || []).filter(function (x) { return x.remaining != null }), ty2 = pickType(bl, q)
       var one = ty2.want && ty2.row ? [ty2.row] : bl
       L.fbN = 0
@@ -5142,7 +5146,11 @@ dompurify/dist/purify.cjs.js:
       var r = await fetch(C.url + '/functions/v1/nour-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ workspace_id: ws, messages: chat.filter(function (c) { return !c.sys }).slice(-20).map(function (c) { return { role: c.role, content: c.content } }) }) })
       var j = await r.json().catch(function () { return {} })
       if (r.ok && j.reply) { busy = false; await say(j.reply) }
-      else if (j.error === 'brain_offline') { busy = false; chat.pop(); chat.push({ role: 'user', content: text }); if (!(await local(text))) { logUnanswered(text); await say(fallbackText(text) + (isDir ? '' : (/[؀-ۿ]/.test(text) ? ' وسجلت سؤالك عشان أتعلمه.' : ' I have noted your question so I can learn it.'))) } }
+      else if (j.error === 'brain_offline') { busy = false; chat.pop(); chat.push({ role: 'user', content: text }); L.viaKb = 0; var okL = await local(text)
+        if (!okL) { logUnanswered(text); var fb = fallbackText(text), arT = /[؀-ۿ]/.test(text); logReview(text, fb, 'pending')
+          await say(isDir ? fb : (arT ? 'مش متأكدة إني فهمتك صح، فمش هخمّن. بعت سؤالك للمراجعة وهرجعلك بالرد هنا وعلى الجرس. وفي الوقت ده تقدر تسألني عن أي قسم في Z Cloud أو عن رصيد إجازاتك.' : 'I am not sure I understood you correctly, so I will not guess. I sent your question for review and I will come back with the answer here and on the bell. Meanwhile you can ask me how any part of Z Cloud works, or about your leave balance.')) }
+        else if (L.viaKb) logReview(text, lastNour(), 'answered')
+        L.viaKb = 0 }
       else { busy = false; await say(j.message || (L.lang === 'ar' ? 'حصلت مشكلة، جرب تاني.' : 'Something went wrong, please try again.')) }
     } catch (e) { busy = false; await say(L.lang === 'ar' ? 'في مشكلة في الشبكة.' : 'Network problem.') }
     busy = false; setState('idle'); if (L.live && L.started && tab === 'chat') setTimeout(listen, 500)
