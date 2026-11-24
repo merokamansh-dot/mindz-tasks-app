@@ -857,3 +857,16 @@ button.hh-kpi:hover{transform:translateY(-2px);border-color:var(--brand)}
 .pr-me-head{display:flex;gap:14px;align-items:center}.pr-me-head>div{display:flex;flex-direction:column;gap:2px;min-width:0}.pr-me-head span{font-size:.8rem;color:var(--muted)}.pr-me-head a{font-size:.8rem;color:var(--brand);overflow-wrap:anywhere;text-decoration:none}
 .pr-actions{display:flex;gap:8px;margin:12px 0 4px;flex-wrap:wrap}
 @media(max-width:900px){.pr-who{display:none}.pr-me{padding:3px}.pr-count{display:none}.pr-team{padding:3px 6px 3px 8px}.pr-pop{position:fixed;top:64px;left:8px;right:8px;width:auto}}
+
+/* ===== Files + Final Documents ===== */
+.fx-sub{margin:-4px 0 6px}
+.fx-final-card{border-left:4px solid var(--ok);background:linear-gradient(0deg,var(--card),var(--card))}
+.fx-final-card h2{color:var(--ok)}
+.fx-final-card .filelist li{border-color:var(--ok);background:var(--ok-tint)}
+.fx-final-card .filelist li.fx-day{background:none;border:0}
+.fx-list li.fx-day{display:block;border:0;background:none;padding:8px 2px 0;font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.fx-list li.fx-day:first-child{padding-top:0}
+.fx-meta{white-space:nowrap}
+.fx-mv{font-weight:600;white-space:nowrap}
+.fx-up{margin-top:12px}
+@media(max-width:600px){.fx-meta{white-space:normal}}
