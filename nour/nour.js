@@ -1,12 +1,17 @@
 (function () {
   'use strict'
   var C = window.__MINDZ_CONFIG || {}, app = document.getElementById('app')
-  var sb, me, ws, isDir = false, isHR = false, settings = {}, names = {}, tab = 'chat', chat = [], busy = false
+  var sb, me, ws, isDir = false, isHR = false, isHandler = false, settings = {}, names = {}, roles = {}, welcome = {}, tab = 'chat', chat = [], busy = false
 
   function h(tag, attrs) {
     var e = document.createElement(tag), a = attrs || {}
     for (var k in a) { if (k === 'class') e.className = a[k]; else if (k === 'on') { for (var ev in a.on) e.addEventListener(ev, a.on[ev]) } else if (k === 'value') e.value = a[k]; else e.setAttribute(k, a[k]) }
-    for (var i = 2; i < arguments.length; i++) { var c = arguments[i]; if (c == null || c === false) continue; e.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c) }
+    function add(c) {
+      if (c == null || c === false) return
+      if (Array.isArray(c)) { c.forEach(add); return }
+      e.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c)
+    }
+    for (var i = 2; i < arguments.length; i++) add(arguments[i])
     return e
   }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild) }
@@ -34,19 +39,25 @@
     settings = st.data || {}
     var p = await sb.from('profiles').select('id,display_name')
     ;(p.data || []).forEach(function (r) { names[r.id] = r.display_name })
+    var rl = await sb.from('workspace_members').select('user_id,role').eq('workspace_id', ws)
+    ;(rl.data || []).forEach(function (r) { roles[r.user_id] = r.role })
+    // handler = the Director (ordinary cases) or the independent contact (cases involving the Director). HR admins are not handlers.
+    isHandler = isDir || (!!settings.escalation_contact && settings.escalation_contact === me.id && roles[me.id] !== 'director')
+    var wl = await sb.rpc('nour_welcome_status', { p_ws: ws }); welcome = wl.data || {}
     render()
   }
 
   var TABS = function () {
     var t = [['chat', 'NOUR Live'], ['me', 'My HR'], ['life', 'My tasks'], ['concern', 'Confidential']]
-    if (isHR) t.push(['approvals', 'Approvals'], ['cases', 'Cases'], ['team', 'Team'], ['people', 'Lifecycle'])
+    if (isHR) t.push(['approvals', 'Approvals'], ['team', 'Team'], ['people', 'Lifecycle'])
+    if (isHandler) t.splice(4, 0, ['cases', 'Cases'])
     if (isDir) t.push(['admin', 'Control'])
     return t
   }
 
   function render() {
     clear(app)
-    app.appendChild(h('header', {}, h('span', { class: 'logo' }, 'NOUR'), h('div', {}, h('div', { class: 'ttl' }, 'AI Head of HR'), h('div', { class: 'sub' }, 'MINDz · ' + nm(me.id))), h('a', { href: '../' }, 'Z Cloud')))
+    app.appendChild(h('header', {}, h('span', { class: 'logo' }, 'NOUR'), h('div', {}, h('div', { class: 'ttl' }, 'AI People & Culture Partner'), h('div', { class: 'sub' }, 'MINDz · ' + nm(me.id))), h('a', { href: '../' }, 'Z Cloud')))
     var nav = h('nav', {})
     TABS().forEach(function (t) { var b = h('button', { class: tab === t[0] ? 'on' : '', on: { click: function () { tab = t[0]; render() } } }, t[1]); nav.appendChild(b) })
     app.appendChild(nav)
@@ -202,7 +213,15 @@
     }, 60000)
   }
 
+  var GREETING = 'أهلاً بيك في MINDz! أنا NOUR، مساعدتك الذكية في كل ما يخص الـ HR وتجربتك في الشركة.\n\nتقدر تسألني عن الإجازات، الحضور، طلباتك، المهام، التدريب، وسياسات الشركة.\n\nولو عندك أي مشكلة أو اقتراح، تقدر تتكلم معايا، وأنا هساعدك توصل للجهة المناسبة.\n\nتحب أساعدك في إيه النهارده؟'
+  function firstGreeting() {
+    // shown once per person; the Director previewing before publication is not marked as greeted
+    if (welcome.greeted || chat.length) return
+    chat.push({ role: 'assistant', content: GREETING, sys: false })
+    if (!(isDir && !welcome.published)) { welcome.greeted = true; sb.rpc('nour_welcome_mark', { p_ws: ws, p_what: 'greeted' }) }
+  }
   function vChat(main) {
+    firstGreeting()
     var wrap = h('div', { class: 'live' }), av = avatarSVG()
     var st = h('div', { id: 'nst', class: 'nst' }), list = h('div', { id: 'nlist', class: 'msgs' })
     var inp = h('textarea', { id: 'nin', dir: 'auto', placeholder: L.lang === 'ar' ? 'اكتب أو اتكلم…' : 'Type or speak…', maxlength: '2000' })
@@ -245,29 +264,67 @@
   }
 
   // ---------- confidential concern ----------
-  async function vConcern(main) {
-    var cs = await sb.rpc('nour_complaints_status', { p_ws: ws })
-    if (cs.error || !cs.data || !cs.data.active) {
-      main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential concerns'), h('div', { dir: 'auto' }, 'This channel is not open yet. It opens once the Director has set and verified the independent contact who handles concerns about leadership.'), h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, 'Until then, please speak to the Director or HR directly. Nothing you type here is sent or stored.')))
-      return
-    }
-    vConcernForm(main)
+  var NOTICE_EN = 'Concerns and complaints sent through this channel go to Amir, the Managing Director, as the designated recipient. Other employees and HR administrators cannot see them. Information may be shared only when necessary for authorised follow-up, safety or legal obligations. We cannot promise absolute confidentiality. If your concern is about Amir personally, or he has a direct conflict of interest, it is NOT sent to him: it goes to an independent contact.'
+  var NOTICE_AR = 'أي شكوى أو ملاحظة بتبعتها من هنا بتوصل لأمير، المدير العام، باعتباره الجهة المخصصة لاستلامها. الموظفين التانيين ومسؤولي الـ HR مش بيشوفوها. المعلومات ممكن تتشارك بس لو ده ضروري للمتابعة المصرح بيها أو لحماية السلامة أو لالتزام قانوني. مش بنقدر نوعد بسرية مطلقة. لو الموضوع بخص أمير شخصياً أو عنده تعارض مصالح مباشر، الشكوى مش بتتبعتله، وبتروح لجهة مستقلة.'
+  function privacyNotice(d) {
+    var box = h('div', { class: 'card notice' }, h('h3', {}, 'How your concern is handled'), h('p', { dir: 'auto' }, NOTICE_EN), h('p', { dir: 'rtl' }, NOTICE_AR))
+    box.appendChild(h('p', { class: d.independent_ready ? 'mut' : 'warnline', dir: 'auto' }, d.independent_ready ? 'The independent route is available.' : 'The independent route is not available yet. A concern about Amir or a conflict of interest cannot be sent to him. It would be held securely, and nobody could see it until the independent contact is set.'))
+    return box
   }
-  function vConcernForm(main) {
+  async function vConcern(main) {
+    var cs = await sb.rpc('nour_complaints_status', { p_ws: ws }), d = cs.data || {}
+    main.appendChild(privacyNotice(d))
+    if (cs.error || !d.active) main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential concerns'), h('div', { dir: 'auto' }, 'This channel is not open yet. Until it opens, please speak to the Director or HR directly. Nothing you type here is sent or stored.')))
+    else vConcernForm(main, d)
+    await myCases(main)
+  }
+  function vConcernForm(main, d) {
     var cats = ['workplace_concern', 'conflict', 'unfair_treatment', 'harassment', 'bullying', 'discrimination', 'workload', 'management', 'communication', 'safety']
-    var sel = h('select', {}), sum = h('textarea', { dir: 'auto', maxlength: '4000', placeholder: 'Tell NOUR what happened, in your own words.' }), urg = h('input', { type: 'checkbox', style: 'width:auto' }), lead = h('input', { type: 'checkbox', style: 'width:auto' }), out = h('div', {}), btn = h('button', { class: 'p' }, 'Send confidentially')
+    var sel = h('select', {}), sum = h('textarea', { dir: 'auto', maxlength: '4000', placeholder: 'Tell NOUR what happened, in your own words.' }), urg = h('input', { type: 'checkbox', style: 'width:auto' }), out = h('div', {}), btn = h('button', { class: 'p' }, 'Send privately')
+    var rNo = h('input', { type: 'radio', name: 'conf', value: 'no', style: 'width:auto' }), rYes = h('input', { type: 'radio', name: 'conf', value: 'yes', style: 'width:auto' })
     cats.forEach(function (c) { sel.appendChild(h('option', { value: c }, c.replace(/_/g, ' '))) })
-    btn.addEventListener('click', async function () {
-      if (sum.value.trim().length < 10) { clear(out); out.appendChild(msg('err', 'Please write a little more detail.')); return }
+    async function send(involves, confirmNo) {
       btn.disabled = true
-      var r = await sb.rpc('nour_case_open', { p_ws: ws, p_category: sel.value, p_summary: sum.value.trim(), p_urgent: urg.checked, p_involves_leadership: lead.checked })
+      var r = await sb.rpc('nour_case_open', { p_ws: ws, p_category: sel.value, p_summary: sum.value.trim(), p_urgent: urg.checked, p_involves_leadership: involves, p_confirm_not_conflict: !!confirmNo })
       btn.disabled = false; clear(out)
-      if (r.error) out.appendChild(msg('err', 'Could not open the case: ' + r.error.message))
-      else { out.appendChild(msg('ok', 'Received. Case ' + r.data.code + '. ' + (r.data.routing_gap ? 'It will be handled by the Director as soon as an independent contact is set.' : 'It has been routed to the right person.'))); sum.value = '' }
+      if (r.error && /DIRECTOR_NAME_MENTIONED/.test(r.error.message)) {
+        out.appendChild(h('div', { class: 'err', dir: 'auto' }, 'You mention Amir. Does this concern him personally, or is it a matter where he has a direct conflict of interest?',
+          h('div', { class: 'row', style: 'margin-top:8px' },
+            h('button', { class: 'd', on: { click: function () { send(true, false) } } }, 'Yes, it concerns him'),
+            h('button', { class: 's', on: { click: function () { send(false, true) } } }, 'No, it does not'))))
+        return
+      }
+      if (r.error) { out.appendChild(msg('err', 'Could not open the case: ' + r.error.message.replace(/^[A-Z_]+: /, ''))); return }
+      out.appendChild(msg('ok', 'Received. Case ' + r.data.code + '. ' + r.data.notice)); sum.value = ''; rNo.checked = rYes.checked = false
+      setTimeout(render, 1800)
+    }
+    btn.addEventListener('click', function () {
+      if (sum.value.trim().length < 10) { clear(out); out.appendChild(msg('err', 'Please write a little more detail.')); return }
+      if (!rNo.checked && !rYes.checked) { clear(out); out.appendChild(msg('err', 'Please answer the question about Amir first.')); return }
+      send(rYes.checked, false)
     })
-    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Raise a concern, confidentially'), h('div', { class: 'mut' }, 'Only the people who must handle it can see it. Concerns about leadership go to an independent contact, not to the person concerned.'),
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Raise a concern'),
       h('label', {}, 'Type'), sel, h('label', {}, 'What happened'), sum,
-      h('label', { class: 'row' }, urg, 'It is urgent or about safety'), h('label', { class: 'row' }, lead, 'It involves someone in company leadership'), h('div', { style: 'margin-top:10px' }, btn), h('div', { style: 'margin-top:10px' }, out)))
+      h('label', { class: 'row' }, urg, 'It is urgent or about safety'),
+      h('div', { class: 'q' }, h('b', {}, 'Does this concern Amir personally, or a matter where he has a direct conflict of interest?'),
+        h('label', { class: 'row', style: 'flex-wrap:nowrap' }, rNo, 'No'), h('label', { class: 'row', style: 'flex-wrap:nowrap;align-items:flex-start' }, rYes, 'Yes. Do not send it to him.' + (d.independent_ready ? '' : ' (The independent route is not available yet; it will be held securely.)'))),
+      h('div', { style: 'margin-top:10px' }, btn), h('div', { style: 'margin-top:10px' }, out)))
+  }
+  var ROUTE_TXT = { director: 'With the Director', independent: 'With the independent contact', held: 'Held securely: the independent route is not available yet' }
+  async function myCases(main) {
+    var r = await sb.from('nour_cases').select('*').eq('workspace_id', ws).eq('reporter_id', me.id).order('created_at', { ascending: false }).limit(20)
+    if (r.error || !r.data.length) return
+    var box = h('div', { class: 'card' }, h('h3', {}, 'My cases'), h('div', { class: 'mut' }, 'You only ever see your own cases here.'))
+    for (var i = 0; i < r.data.length; i++) {
+      var c = r.data[i], ev = await sb.from('nour_case_events').select('*').eq('case_id', c.id).order('at')
+      var ta = h('textarea', { dir: 'auto', placeholder: 'Add a message to the case' })
+      var item = h('div', { class: 'case', style: 'margin-top:10px' }, h('div', { class: 'row' }, h('b', {}, c.code), h('span', { class: 'pill warn' }, c.status), h('span', { class: 'sp' }), h('span', { class: 'mut' }, when(c.created_at))),
+        h('div', { class: 'mut', dir: 'auto' }, ROUTE_TXT[c.route] || ''), c.outcome ? h('div', { dir: 'auto' }, h('b', {}, 'Outcome: '), c.outcome) : null)
+      ;(ev.data || []).forEach(function (e) { if (e.kind === 'opened' || !e.body) return; item.appendChild(h('div', { class: 'mut', dir: 'auto', style: 'margin-top:4px' }, when(e.at) + ' · ' + (e.actor_id ? (e.actor_id === me.id ? 'You' : 'Case handler') : 'NOUR') + ': ' + e.body)) })
+      if (c.status !== 'closed') item.appendChild(h('div', { style: 'margin-top:6px' }, ta, h('button', { class: 's', style: 'margin-top:6px', on: { click: (function (cid, t) { return async function () { if (!t.value.trim()) return; var x = await sb.rpc('nour_case_message', { p_case: cid, p_body: t.value.trim(), p_internal: false }); if (x.error) alert(x.error.message); else render() } })(c.id, ta) } }, 'Send')))
+      box.appendChild(item)
+    }
+    main.appendChild(box)
   }
 
   // ---------- approvals (HR/Director) ----------
@@ -293,30 +350,59 @@
     })
   }
 
-  // ---------- cases ----------
+  // ---------- cases dashboard (the Director, or the independent contact for matters involving him) ----------
+  var CATS = ['workplace_concern', 'conflict', 'unfair_treatment', 'harassment', 'bullying', 'discrimination', 'workload', 'management', 'communication', 'safety']
+  var PRI = ['low', 'normal', 'high', 'urgent'], PRANK = { urgent: 0, high: 1, normal: 2, low: 3 }
+  var caseFilter = 'open'
+  function ageDays(t) { return Math.floor((Date.now() - new Date(t).getTime()) / 86400000) }
   async function vCases(main) {
     main.appendChild(h('div', { class: 'boot' }, 'Loading…'))
-    var r = await sb.from('nour_cases').select('*').eq('workspace_id', ws).order('created_at', { ascending: false }).limit(50); clear(main)
+    var r = await sb.from('nour_cases').select('*').eq('workspace_id', ws).neq('reporter_id', me.id).order('created_at', { ascending: false }).limit(200); clear(main)
     if (r.error) { main.appendChild(msg('err', r.error.message)); return }
-    if (!r.data.length) main.appendChild(h('div', { class: 'card mut' }, 'No cases you are allowed to see.'))
-    r.data.forEach(function (c) {
-      var det = h('div', {}), open = false
-      var card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', {}, c.code), h('span', { class: 'pill' + (c.urgent ? ' bad' : '') }, c.category.replace(/_/g, ' ')), h('span', { class: 'pill warn' }, c.status), c.routing_gap ? h('span', { class: 'pill bad' }, 'no independent contact') : null),
-        h('div', { class: 'mut' }, 'Opened ' + when(c.created_at)), det)
-      card.style.cursor = 'pointer'
-      card.addEventListener('click', async function (ev) {
-        if (ev.target.closest('button,select,textarea,input')) return
-        open = !open; clear(det); if (!open) return
-        var ev2 = await sb.from('nour_case_events').select('*').eq('case_id', c.id).order('at')
-        det.appendChild(h('pre', { dir: 'auto' }, c.summary))
-        ;(ev2.data || []).forEach(function (e) { det.appendChild(h('div', { class: 'mut', dir: 'auto', style: 'margin-top:6px' }, when(e.at) + ' · ' + nm(e.actor_id) + ' · ' + e.kind + (e.internal ? ' (internal)' : '') + (e.body ? ': ' + e.body : ''))) })
-        var ta = h('textarea', { dir: 'auto', placeholder: 'Add a message' }), st = h('select', {}, ['received', 'triage', 'escalated', 'investigating', 'resolved', 'closed'].map(function (s) { return h('option', { value: s }, s) }))
-        st.value = c.status
-        det.appendChild(h('div', { style: 'margin-top:8px' }, ta, h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 's', on: { click: async function () { if (!ta.value.trim()) return; var x = await sb.rpc('nour_case_message', { p_case: c.id, p_body: ta.value.trim(), p_internal: false }); if (x.error) alert(x.error.message); else render() } } }, 'Send'), st,
-          h('button', { class: 'p', on: { click: async function () { var x = await sb.rpc('nour_case_set_status', { p_case: c.id, p_status: st.value, p_note: null }); if (x.error) alert(x.error.message); else render() } } }, 'Set status'))))
-      })
-      main.appendChild(card)
+    var all = r.data, isOpen = function (c) { return c.status !== 'resolved' && c.status !== 'closed' }
+    var open = all.filter(isOpen), oldest = open.reduce(function (m, c) { return Math.max(m, ageDays(c.created_at)) }, 0)
+    function tile(n, l, bad) { return h('div', { class: 'tile' + (bad && n ? ' bad' : '') }, h('b', {}, String(n)), h('span', {}, l)) }
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential cases'), h('div', { class: 'tiles' }, tile(open.length, 'open'), tile(open.filter(function (c) { return c.priority === 'urgent' || c.priority === 'high' }).length, 'high / urgent', true), tile(open.filter(function (c) { return c.status === 'received' }).length, 'not yet reviewed', true), tile(oldest, 'days, oldest open')),
+      h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, 'You see only the cases routed to you. Opening a case is recorded in its own history, never in the general log. Notes marked internal are never shown to the employee.'),
+      h('div', { class: 'row', style: 'margin-top:8px' }, ['open', 'urgent', 'all'].map(function (f) { return h('button', { class: caseFilter === f ? 'p' : 's', on: { click: function () { caseFilter = f; render() } } }, f) }))))
+    var list = all.filter(function (c) { return caseFilter === 'all' ? true : caseFilter === 'urgent' ? isOpen(c) && (c.priority === 'urgent' || c.priority === 'high') : isOpen(c) })
+    list.sort(function (a, b) { return (PRANK[a.priority] - PRANK[b.priority]) || (new Date(a.created_at) - new Date(b.created_at)) })
+    if (!list.length) main.appendChild(h('div', { class: 'card mut' }, 'No cases in this view.'))
+    list.forEach(function (c) { main.appendChild(caseCard(c)) })
+  }
+  function caseCard(c) {
+    var det = h('div', {}), opened = false
+    var card = h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', {}, c.code), h('span', { class: 'pill ' + (c.priority === 'urgent' ? 'bad' : c.priority === 'high' ? 'warn' : '') }, c.priority), h('span', { class: 'pill' }, c.category.replace(/_/g, ' ')), h('span', { class: 'pill warn' }, c.status), h('span', { class: 'sp' }), c.involves_leadership ? h('span', { class: 'pill' }, 'independent') : null),
+      h('div', { class: 'mut' }, nm(c.reporter_id) + ' · opened ' + when(c.created_at) + ' · ' + ageDays(c.created_at) + ' day(s) ago'), det)
+    card.style.cursor = 'pointer'
+    card.addEventListener('click', async function (ev) {
+      if (ev.target.closest('button,select,textarea,input,label')) return
+      opened = !opened; clear(det); if (!opened) return
+      sb.rpc('nour_case_viewed', { p_case: c.id })
+      var e2 = await sb.from('nour_case_events').select('*').eq('case_id', c.id).order('at'), a2 = await sb.from('nour_case_actions').select('*').eq('case_id', c.id).order('created_at')
+      det.appendChild(h('pre', { dir: 'auto' }, c.summary))
+      var tl = h('div', { class: 'hist' }, h('div', { class: 'mut' }, 'History'))
+      ;(e2.data || []).forEach(function (e) { tl.appendChild(h('div', { class: 'mut', dir: 'auto', style: 'margin-top:4px' }, when(e.at) + ' · ' + (e.actor_id ? nm(e.actor_id) : 'system') + ' · ' + e.kind + (e.internal ? ' (internal)' : '') + (e.body ? ': ' + e.body : ''))) })
+      det.appendChild(tl)
+      // triage
+      var cs = h('select', {}, CATS.map(function (x) { return h('option', { value: x }, x.replace(/_/g, ' ')) })), ps = h('select', {}, PRI.map(function (x) { return h('option', { value: x }, x) })); cs.value = c.category; ps.value = c.priority
+      det.appendChild(h('div', { class: 'row', style: 'margin-top:10px' }, h('div', { class: 'sp' }, cs), ps, h('button', { class: 's', on: { click: async function () { var x = await sb.rpc('nour_case_triage', { p_case: c.id, p_category: cs.value, p_priority: ps.value }); if (x.error) alert(x.error.message); else render() } } }, 'Save triage')))
+      // status
+      var st = h('select', {}, ['triage', 'escalated', 'investigating', 'resolved', 'closed'].map(function (s) { return h('option', { value: s }, s) })), note = h('input', { dir: 'auto', placeholder: 'Closing note: the employee will see it (needed to resolve or close)' }); st.value = c.status === 'received' ? 'triage' : c.status
+      det.appendChild(h('div', { style: 'margin-top:10px' }, note, h('div', { class: 'row', style: 'margin-top:6px' }, st, h('button', { class: 'p', on: { click: async function () { var x = await sb.rpc('nour_case_set_status', { p_case: c.id, p_status: st.value, p_note: note.value.trim() || null }); if (x.error) alert(x.error.message); else render() } } }, 'Set status'))))
+      // message / internal note
+      var ta = h('textarea', { dir: 'auto', placeholder: 'Reply to the employee, or write an internal note' }), internal = h('input', { type: 'checkbox', style: 'width:auto' })
+      det.appendChild(h('div', { style: 'margin-top:10px' }, ta, h('div', { class: 'row', style: 'margin-top:6px' }, h('label', { class: 'row' }, internal, 'Internal note (employee cannot see it)'), h('span', { class: 'sp' }), h('button', { class: 's', on: { click: async function () { if (!ta.value.trim()) return; var x = await sb.rpc('nour_case_message', { p_case: c.id, p_body: ta.value.trim(), p_internal: internal.checked }); if (x.error) alert(x.error.message); else render() } } }, 'Save'))))
+      // follow-up actions
+      var acts = h('div', { style: 'margin-top:10px' }, h('div', { class: 'mut' }, 'Follow-up actions (the assignee sees only the action text, never the case)'))
+      ;(a2.data || []).forEach(function (a) { acts.appendChild(h('div', { class: 'row', style: 'margin:4px 0' }, h('div', { class: 'sp', dir: 'auto' }, a.title + ' → ' + nm(a.assignee_id) + (a.due_date ? ' (due ' + a.due_date + ')' : '') + ' · ' + a.status),
+        a.status === 'open' ? h('button', { class: 's', on: { click: async function () { var x = await sb.rpc('nour_case_action_set', { p_id: a.id, p_status: 'cancelled' }); if (x.error) alert(x.error.message); else render() } } }, 'Cancel') : null)) })
+      var who = h('select', {}, h('option', { value: '' }, '— assign to —')); Object.keys(names).forEach(function (id) { if (id !== c.reporter_id && id !== me.id && !(c.involves_leadership && roles[id] === 'director')) who.appendChild(h('option', { value: id }, nm(id))) })
+      var at = h('input', { dir: 'auto', maxlength: '200', placeholder: 'Action (do not write case details)' }), ad = h('input', { type: 'date' })
+      acts.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, who, h('div', { class: 'sp' }, at), ad, h('button', { class: 's', on: { click: async function () { if (!who.value || !at.value.trim()) return; var x = await sb.rpc('nour_case_action_add', { p_case: c.id, p_assignee: who.value, p_title: at.value.trim(), p_due: ad.value || null }); if (x.error) alert(x.error.message); else render() } } }, 'Assign')))
+      det.appendChild(acts)
     })
+    return card
   }
 
   // ---------- team (HR) ----------
@@ -341,18 +427,24 @@
     var jr = await sb.from('nour_job_runs').select('*').eq('workspace_id', ws).order('started_at', { ascending: false }).limit(8)
     var ac = await sb.from('nour_activity').select('*').eq('workspace_id', ws).order('at', { ascending: false }).limit(25); clear(main)
     var members = Object.keys(names), esc = h('select', {}, h('option', { value: '' }, '— not set —'))
-    members.forEach(function (id) { esc.appendChild(h('option', { value: id }, nm(id))) }); esc.value = settings.escalation_contact || ''
+    members.filter(function (id) { return roles[id] !== 'director' }).forEach(function (id) { esc.appendChild(h('option', { value: id }, nm(id))) }); esc.value = settings.escalation_contact || ''
     var out = h('div', {})
     async function patch(p, label) { var x = await sb.rpc('nour_set_settings', { p_ws: ws, p_patch: p }); clear(out); if (x.error) out.appendChild(msg('err', x.error.message)); else { out.appendChild(msg('ok', label + ' saved.')); var s = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s.data || settings; setTimeout(render, 700) } }
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Control'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.enabled && !settings.paused ? 'ok' : 'bad') }, settings.enabled ? (settings.paused ? 'Paused' : 'Running') : 'Off'), h('span', { class: 'sp' }),
       h('button', { class: settings.paused ? 'p' : 'd', on: { click: function () { patch({ paused: !settings.paused }, settings.paused ? 'Resumed' : 'Paused') } } }, settings.paused ? 'Resume NOUR' : 'Pause NOUR')),
-      h('label', {}, 'Independent contact for complaints about leadership'), esc, h('div', { style: 'margin-top:8px' }, h('button', { class: 's', on: { click: function () { patch({ escalation_contact: esc.value || null }, 'Contact') } } }, 'Save contact')), h('div', { style: 'margin-top:8px' }, out)))
+      h('div', { class: 'mut', style: 'margin-top:8px', dir: 'auto' }, 'Employee concerns come to you, the Director. If a concern involves you personally or you have a direct conflict of interest, it is never routed to you.'),
+      h('label', {}, 'Independent contact for concerns involving the Director'), esc, h('div', { class: 'mut', dir: 'auto' }, 'Must be a Z Cloud member who is not a Director. Until one is set, such concerns are held securely and the employee is told the independent route is not available yet.'), h('div', { style: 'margin-top:8px' }, h('button', { class: 's', on: { click: function () { patch({ escalation_contact: esc.value || null }, 'Contact') } } }, 'Save contact')), h('div', { style: 'margin-top:8px' }, out)))
     var cst = await sb.rpc('nour_complaints_status', { p_ws: ws }), cd = cst.data || {}, cout = h('div', {})
     function chk(ok, t) { return h('div', { class: 'row' }, h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, ok ? 'OK' : 'Missing'), h('span', { class: 'mut' }, t)) }
-    async function setAct(v) { var x = await sb.rpc('nour_complaints_set_active', { p_ws: ws, p_active: v }); clear(cout); if (x.error) cout.appendChild(msg('err', x.error.message.replace(/^Cannot activate: /, 'Cannot activate: '))); else { cout.appendChild(msg('ok', v ? 'Confidential complaints are now active.' : 'Confidential complaints are switched off.')); var s2 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s2.data || settings; setTimeout(render, 700) } }
-    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (cd.active ? 'ok' : 'bad') }, cd.active ? 'Active' : 'Not active'), h('span', { class: 'sp' }), h('button', { class: cd.active ? 'd' : 'p', on: { click: function () { setAct(!cd.active) } } }, cd.active ? 'Switch off' : 'Verify and activate')),
-      chk(!!cd.contact_set, 'Independent contact is set'), chk(!!cd.contact_is_member, 'Contact is a workspace member'), chk(!!cd.contact_independent_of_director, 'Contact is not a Director'),
-      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Concerns about leadership are hidden from the Director and HR and go only to the contact. Changing the contact switches this off until you verify again.'), h('div', { style: 'margin-top:8px' }, cout)))
+    async function setAct(v) { var x = await sb.rpc('nour_complaints_set_active', { p_ws: ws, p_active: v }); clear(cout); if (x.error) cout.appendChild(msg('err', x.error.message)); else { cout.appendChild(msg('ok', v ? 'Confidential complaints are now active.' : 'Confidential complaints are switched off.')); var s2 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s2.data || settings; setTimeout(render, 700) } }
+    var chkd = await sb.rpc('nour_complaints_check', { p_ws: ws }), ck = chkd.data || {}
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Confidential complaints'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (cd.active ? 'ok' : 'bad') }, cd.active ? 'Active' : 'Not active'), h('span', { class: 'sp' }), h('button', { class: cd.active ? 'd' : 'p', on: { click: function () { setAct(!cd.active) } } }, cd.active ? 'Switch off' : 'Activate')),
+      chk(!!ck.director_set, 'You are the recipient of ordinary concerns'), chk(!!ck.contact_valid, 'Independent contact set and valid (needed for concerns involving you)'),
+      h('div', { class: 'mut', style: 'margin-top:6px', dir: 'auto' }, 'Without an independent contact the channel can still open, but a concern about you is held, nobody can see it, and the employee is told the route is not available. Activate only after reviewing the tests.'), h('div', { style: 'margin-top:8px' }, cout)))
+    var wout = h('div', {})
+    async function setWelcome(v) { var x = await sb.rpc('nour_set_settings', { p_ws: ws, p_patch: { welcome_published: v } }); clear(wout); if (x.error) wout.appendChild(msg('err', x.error.message)); else { wout.appendChild(msg('ok', v ? 'Welcome section published to all employees.' : 'Welcome section hidden from employees.')); var s3 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s3.data || settings; setTimeout(render, 700) } }
+    main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Welcome section on the Z Cloud home page'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.welcome_published ? 'ok' : 'warn') }, settings.welcome_published ? 'Visible to employees' : 'Preview only (you)'), h('span', { class: 'sp' }), h('button', { class: settings.welcome_published ? 'd' : 'p', on: { click: function () { setWelcome(!settings.welcome_published) } } }, settings.welcome_published ? 'Hide from employees' : 'Publish to employees')),
+      h('div', { class: 'mut', dir: 'auto', style: 'margin-top:6px' }, 'While unpublished, only you see it on the home page, with a preview ribbon. Publishing shows it to every signed-in employee.'), h('div', { style: 'margin-top:8px' }, wout)))
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Automatic check-ins'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.checkins_enabled ? 'ok' : 'bad') }, settings.checkins_enabled ? 'On' : 'Off'), h('span', { class: 'sp' }), h('button', { class: settings.checkins_enabled ? 'd' : 'p', on: { click: function () { patch({ checkins_enabled: !settings.checkins_enabled }, 'Check-ins setting') } } }, settings.checkins_enabled ? 'Turn off' : 'Turn on')), h('div', { class: 'mut', dir: 'auto' }, 'When on, NOUR sends a 30-day and 90-day check-in to each new employee and a monthly check-in to everyone, with reminders. Answers are visible to HR and the Director. Off by default.')))
     var ping = h('div', { class: 'card' }, h('h3', {}, 'Integrations'), h('div', { class: 'mut' }, 'Checking…'))
     main.appendChild(ping)
@@ -410,6 +502,8 @@
         (mine && (!t.human_only || isHR)) ? btn('Done', 'p', function () { act(out, 'nour_task_complete', { p_id: t.id }, 'Marked done.') }) : null, out))
     })
     main.appendChild(tc)
+    var ca = await sb.from('nour_case_actions').select('id,title,due_date,status').eq('assignee_id', me.id).eq('status', 'open').order('due_date')
+    if ((ca.data || []).length) { var cc = h('div', { class: 'card' }, h('h3', {}, 'Follow-ups assigned to me'), h('div', { class: 'mut' }, 'Assigned by the Director. You only see the action, nothing else.')); ca.data.forEach(function (a) { var o2 = h('span', {}); cc.appendChild(h('div', { class: 'row', style: 'margin:6px 0' }, h('div', { style: 'flex:1', dir: 'auto' }, h('div', {}, a.title), h('div', { class: 'mut' }, 'due ' + dt(a.due_date))), btn('Done', 'p', function () { act(o2, 'nour_case_action_set', { p_id: a.id, p_status: 'done' }, 'Marked done.') }), o2)) }); main.appendChild(cc) }
     if (tr.length) { var trc = h('div', { class: 'card' }, h('h3', {}, 'My training')); tr.forEach(function (t) { var out = h('span', {}); trc.appendChild(h('div', { class: 'row', style: 'margin:6px 0' }, h('div', { style: 'flex:1', dir: 'auto' }, h('div', {}, t.title), h('div', { class: 'mut' }, (t.provider || '') + ' · due ' + dt(t.due_date))), h('span', { class: 'pill' + (t.status === 'completed' ? ' ok' : '') }, t.status.replace('_', ' ')), t.status === 'planned' ? btn('Start', 's', function () { act(out, 'nour_training_status', { p_id: t.id, p_status: 'in_progress' }) }) : null, (t.status === 'planned' || t.status === 'in_progress') ? btn('Completed', 'p', function () { act(out, 'nour_training_status', { p_id: t.id, p_status: 'completed' }) }) : null, out)) }); main.appendChild(trc) }
     if (ct.length) main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'My contract dates'), ct.map(function (c) { return h('div', { class: 'mut' }, c.contract_type.replace('_', ' ') + ' · starts ' + dt(c.start_date) + ' · ends ' + dt(c.end_date) + ' · probation ends ' + dt(c.probation_end) + ' · ' + c.status) })))
     // resignation
