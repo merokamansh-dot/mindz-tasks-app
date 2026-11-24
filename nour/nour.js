@@ -1,6 +1,6 @@
 (function () {
   'use strict'
-  var C = window.__MINDZ_CONFIG || {}, app = document.getElementById('app')
+  var C = window.__MINDZ_CONFIG || {}, EMB = (typeof __NE !== 'undefined' && __NE) || null, app = EMB ? EMB.root : document.getElementById('app')
   var sb, me, ws, isDir = false, isHR = false, isHandler = false, cstate = {}, settings = {}, names = {}, roles = {}, welcome = {}, tab = 'chat', chat = [], busy = false
 
   function h(tag, attrs) {
@@ -20,13 +20,13 @@
   function msg(kind, text) { return h('div', { class: kind }, text) }
 
   function fatal(text, linkText) {
-    clear(app); app.appendChild(h('main', {}, h('div', { class: 'card' }, h('h3', {}, 'NOUR'), h('p', {}, text), linkText ? h('a', { href: '../' }, linkText) : null)))
+    clear(app); app.appendChild(h('main', {}, h('div', { class: 'card' }, h('h3', {}, 'NOUR'), h('p', {}, text), linkText && !EMB ? h('a', { href: '../' }, linkText) : null)))
   }
 
   async function boot() {
-    if (!C.url || !C.anonKey || !window.supabase) return fatal('Could not load. Check your connection and reload.')
+    if (!C.url || !C.anonKey || (!EMB && !window.supabase)) return fatal('Could not load. Check your connection and reload.')
     // Same origin as Z Cloud, default storage key: this reuses the signed-in session. No new login, no tokens in the URL.
-    sb = window.supabase.createClient(C.url, C.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } })
+    sb = EMB ? EMB.sb : window.supabase.createClient(C.url, C.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } })
     var s = (await sb.auth.getSession()).data.session
     if (!s) return fatal('Please sign in to Z Cloud first, then open NOUR again.', 'Open Z Cloud')
     me = s.user
@@ -45,6 +45,7 @@
     var cs0 = await sb.rpc('nour_complaints_status', { p_ws: ws }); cstate = cs0.data || {}
     isHandler = !!cstate.is_handler
     var wl = await sb.rpc('nour_welcome_status', { p_ws: ws }); welcome = wl.data || {}
+    if (EMB && EMB.mode === 'chat') { L.mute = true; L.live = false; L.started = true; render(); startWatch(); briefing(); return }
     render()
   }
 
@@ -58,7 +59,7 @@
 
   function render() {
     clear(app)
-    app.appendChild(h('header', {}, h('span', { class: 'logo' }, 'NOUR'), h('div', {}, h('div', { class: 'ttl' }, 'AI People & Culture Partner'), h('div', { class: 'sub' }, 'MINDz · ' + nm(me.id))), h('a', { href: '../' }, 'Z Cloud')))
+    if (!EMB) app.appendChild(h('header', {}, h('span', { class: 'logo' }, 'NOUR'), h('div', {}, h('div', { class: 'ttl' }, 'AI People & Culture Partner'), h('div', { class: 'sub' }, 'MINDz · ' + nm(me.id))), h('a', { href: '../' }, 'Z Cloud')))
     var nav = h('nav', {})
     TABS().forEach(function (t) { var b = h('button', { class: tab === t[0] ? 'on' : '', on: { click: function () { tab = t[0]; render() } } }, t[1]); nav.appendChild(b) })
     app.appendChild(nav)
@@ -80,7 +81,7 @@
   function avatarSVG() {
     var d = document.createElement('div'); d.className = 'avwrap'
     var bars = ''; for (var i = 0; i < 9; i++) bars += '<i></i>'
-    d.innerHTML = '<div id="nav" class="nav" data-s="idle" role="img" aria-label="NOUR"><div class="halo"></div><img class="portrait" src="nour-portrait.jpg" alt="NOUR, Head of HR" width="512" height="512" decoding="async"></div><div id="nwave" class="wave" aria-hidden="true">' + bars + '</div>'
+    d.innerHTML = '<div id="nav" class="nav" data-s="idle" role="img" aria-label="NOUR"><div class="halo"></div><img class="portrait" src="' + (EMB ? EMB.portrait : 'nour-portrait.jpg') + '" alt="NOUR, Head of HR" width="512" height="512" decoding="async"></div><div id="nwave" class="wave" aria-hidden="true">' + bars + '</div>'
     return d
   }
   // The portrait cannot lip-sync (and is never faked to). Speech level drives a waveform and halo instead.
@@ -260,6 +261,7 @@
   function startWatch() {
     clearInterval(L.poll)
     L.poll = setInterval(async function () {
+      if (EMB && !app.isConnected) { clearInterval(L.poll); stopListening(); stopSpeaking(); return }
       if (!L.started || document.hidden || busy || L.state === 'speaking' || !isHR) return
       var o = await gather(); var prev = L.seen || { apps: 0, cases: 0 }; L.last = o
       if (o.apps > prev.apps) { L.seen = { apps: o.apps, cases: o.cases }; await say(tx().newApp) }
@@ -692,5 +694,6 @@
     b.appendChild(c)
   }
 
+  if (EMB) EMB.stop = function () { clearInterval(L.poll); L.live = false; L.started = false; L.mute = true; try { stopListening() } catch (e) {} try { stopSpeaking() } catch (e) {} }
   boot().catch(function (e) { fatal('Something went wrong: ' + (e && e.message || e)) })
 })()

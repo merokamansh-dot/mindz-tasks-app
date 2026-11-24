@@ -10,6 +10,7 @@
   var KEY = 'sb-' + (C.url.replace(/^https?:\/\//, '').split('.')[0]) + '-auth-token'
   var state = { ws: null, status: null, at: 0, loading: false, expanded: null }
   var ID = 'nour-welcome'
+  var panel = null
 
   function h(tag, attrs) {
     var e = document.createElement(tag), a = attrs || {}
@@ -39,7 +40,8 @@
   }
   function mark(what) { var t = token(); if (!t || !state.ws) return; try { client(t.access_token).rpc('nour_welcome_mark', { p_ws: state.ws, p_what: what }) } catch (e) { /* non-critical */ } }
 
-  var CSS = '#nour-welcome{--b:#0D5FB3;--n:#020F22;font-family:inherit;margin:0 0 24px;border-radius:20px;overflow:hidden;background:#fff;color:var(--n);border:1px solid #d6e2f3;box-shadow:0 8px 30px rgba(13,95,179,.12);position:relative}' +
+  var CSS = '#nour-welcome .nw-live{background:#f6f4ee;border-top:1px solid #d6e2f3;padding:12px 14px 16px}#nour-welcome .nw-live[hidden]{display:none}#nour-welcome .nw-lhead{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px}#nour-welcome .nw-lhead button{min-height:36px;padding:6px 16px}' +
+    '#nour-welcome{--b:#0D5FB3;--n:#020F22;font-family:inherit;margin:0 0 24px;border-radius:20px;overflow:hidden;background:#fff;color:var(--n);border:1px solid #d6e2f3;box-shadow:0 8px 30px rgba(13,95,179,.12);position:relative}' +
     '#nour-welcome *{box-sizing:border-box}#nour-welcome h2,#nour-welcome h3,#nour-welcome p{margin:0}' +
     '#nour-welcome .nw-ribbon{background:#FCFF59;color:var(--n);font-weight:700;font-size:13px;padding:6px 14px;text-align:center}' +
     '#nour-welcome .nw-hero{display:grid;grid-template-columns:1.15fr .85fr;background:linear-gradient(120deg,#fff 0%,#eaf2fc 100%)}' +
@@ -48,7 +50,7 @@
     '#nour-welcome h2{font-size:clamp(26px,4vw,38px);line-height:1.12;font-weight:800}' +
     '#nour-welcome .nw-sub{font-size:17px;color:#3b4a60;max-width:34em}' +
     '#nour-welcome .nw-btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}' +
-    '#nour-welcome button,#nour-welcome a.nw-btn{font:inherit;font-weight:700;border-radius:999px;padding:12px 22px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;min-height:46px}' +
+    '#nour-welcome button.nw-p,#nour-welcome button.nw-s,#nour-welcome button.nw-q,#nour-welcome a.nw-btn{font:inherit;font-weight:700;border-radius:999px;padding:12px 22px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;min-height:46px}' +
     '#nour-welcome .nw-p{background:var(--b);color:#fff;border:2px solid var(--b)}#nour-welcome .nw-s{background:#fff;color:var(--b);border:2px solid var(--b)}#nour-welcome .nw-q{background:none;color:#5b6b82;border:0;font-weight:500;text-decoration:underline;padding:8px 6px;min-height:40px}' +
     '#nour-welcome button:focus-visible,#nour-welcome a:focus-visible,#nour-welcome video:focus-visible{outline:3px solid #FCFF59;outline-offset:2px;box-shadow:0 0 0 5px var(--n)}' +
     '#nour-welcome .nw-face{background:var(--b);display:flex;align-items:center;justify-content:center;padding:26px 26px 64px;position:relative}' +
@@ -74,6 +76,23 @@
     ['Company Information', 'People, policies and useful information about MINDz.']
   ]
 
+  // NOUR opens right here on the home page (same session, no second screen). Falls back to the standalone page only if the embed code is missing.
+  var ctl = null
+  function closeNour() { try { if (ctl && ctl.stop) ctl.stop() } catch (e) { /* ignore */ } ctl = null; try { if (window.speechSynthesis) speechSynthesis.cancel() } catch (e) { /* ignore */ } if (panel) { panel.hidden = true; while (panel.firstChild) panel.removeChild(panel.firstChild) } }
+  function openNour(mode, base) {
+    if (!window.__nourOpen) { location.href = base; return }
+    closeNour()
+    if (!panel) panel = h('div', { id: 'nour-live', class: 'nw-live' })
+    var root = h('div', { id: 'nour-embed' })
+    panel.appendChild(h('div', { class: 'nw-lhead' }, h('b', {}, mode === 'chat' ? 'Chat with NOUR' : 'Talk to NOUR'), h('button', { class: 'nw-s', type: 'button', on: { click: closeNour } }, 'Close')))
+    panel.appendChild(root); panel.hidden = false
+    var cur = document.getElementById(ID); if (cur && panel.parentNode !== cur) { /* rebuild moves the node under the section */ rebuild() }
+    ctl = window.__nourOpen(root, mode)
+    try { panel.scrollIntoView({ block: 'start', behavior: 'smooth' }) } catch (e) { /* ignore */ }
+  }
+  function talkBtn(cls, base) { return h('button', { class: cls, type: 'button', on: { click: function () { openNour('talk', base) } } }, 'Talk to NOUR') }
+  function chatBtn(cls, base) { return h('button', { class: cls, type: 'button', on: { click: function () { openNour('chat', base) } } }, 'Chat with NOUR') }
+
   function build() {
     var st = state.status || {}, preview = !st.published && st.can_preview
     var sec = h('section', { id: ID, 'aria-labelledby': 'nw-h' })
@@ -81,9 +100,10 @@
     if (ribbon) sec.appendChild(ribbon)
     var base = /github\.io$/.test(location.hostname) ? 'nour/' : 'https://merokamansh-dot.github.io/mindz-tasks-app/nour/'
     if (!state.expanded) {
-      sec.appendChild(h('div', { class: 'nw-bar' }, h('img', { src: base + 'nour-portrait.jpg', alt: '' }), h('span', {}, 'NOUR, your People & Culture Partner'),
+      sec.appendChild(h('div', { class: 'nw-bar' }, h('img', { src: (window.__nourPortrait || base + 'nour-portrait.jpg'), alt: '' }), h('span', {}, 'NOUR, your People & Culture Partner'),
         h('button', { class: 'nw-s', type: 'button', on: { click: function () { state.expanded = true; mark('undismiss'); rebuild() } } }, 'Show welcome'),
-        h('a', { class: 'nw-btn nw-p', href: base }, 'Talk to NOUR')))
+        talkBtn('nw-s', base), chatBtn('nw-p', base)))
+      if (panel && !panel.hidden) sec.appendChild(panel)
       return sec
     }
     var vidBox = h('div', { class: 'nw-vid', hidden: '' })
@@ -103,14 +123,15 @@
       try { vidBox.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }) } catch (e) { /* ignore */ }
     }
     var meet = h('button', { class: 'nw-p', type: 'button', on: { click: function () { openVideo(true) } } }, 'Meet NOUR')
-    var talk = h('a', { class: 'nw-btn nw-s', href: base }, 'Talk to NOUR')
+    var talk = talkBtn('nw-s', base), chat = chatBtn('nw-s', base)
     var hide = h('button', { class: 'nw-q', type: 'button', on: { click: function () { state.expanded = false; mark('dismiss'); rebuild() } } }, 'Hide this for now')
     sec.appendChild(h('div', { class: 'nw-hero' },
       h('div', { class: 'nw-copy' }, h('div', { class: 'nw-eyebrow' }, 'New at MINDz'),
         h('h2', { id: 'nw-h' }, 'Meet NOUR — Your People & Culture Partner'),
         h('p', { class: 'nw-sub' }, 'Your AI-powered HR companion, here to make your work experience at MINDz easier.'),
-        h('div', { class: 'nw-btns' }, meet, talk, hide)),
-      h('div', { class: 'nw-face' }, h('img', { src: base + 'nour-portrait.jpg', alt: 'NOUR, MINDz AI People and Culture partner', width: '260', height: '260' }), h('div', { class: 'nw-tag' }, h('b', {}, 'NOUR'), ' · AI assistant'))))
+        h('div', { class: 'nw-btns' }, meet, talk, chat, hide)),
+      h('div', { class: 'nw-face' }, h('img', { src: (window.__nourPortrait || base + 'nour-portrait.jpg'), alt: 'NOUR, MINDz AI People and Culture partner', width: '260', height: '260' }), h('div', { class: 'nw-tag' }, h('b', {}, 'NOUR'), ' · AI assistant'))))
+    if (panel && !panel.hidden) sec.appendChild(panel)
     sec.appendChild(vidBox)
     var grid = h('div', { class: 'nw-grid' })
     CATS.forEach(function (c, i) { grid.appendChild(h('div', { class: 'nw-c' }, h('b', {}, h('i', { 'aria-hidden': 'true' }, String(i + 1)), c[0]), h('span', {}, c[1]))) })
