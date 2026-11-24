@@ -4,6 +4,7 @@
    If anything is missing (no session, no anchor, RPC error) it shows nothing. */
 (function () {
   'use strict'
+  if (window.__mzWelcome) return; window.__mzWelcome = 1
   var C = window.__MINDZ_CONFIG || {}
   if (!C.url || !C.anonKey || !window.supabase) return
   var KEY = 'sb-' + (C.url.replace(/^https?:\/\//, '').split('.')[0]) + '-auth-token'
@@ -78,7 +79,7 @@
     var sec = h('section', { id: ID, 'aria-labelledby': 'nw-h' })
     var ribbon = preview ? h('div', { class: 'nw-ribbon', role: 'note' }, 'PREVIEW. Only you can see this. Employees do not see it until you publish it in NOUR, Control.') : null
     if (ribbon) sec.appendChild(ribbon)
-    var base = 'nour/'
+    var base = /github\.io$/.test(location.hostname) ? 'nour/' : 'https://merokamansh-dot.github.io/mindz-tasks-app/nour/'
     if (!state.expanded) {
       sec.appendChild(h('div', { class: 'nw-bar' }, h('img', { src: base + 'nour-portrait.jpg', alt: '' }), h('span', {}, 'NOUR, your People & Culture Partner'),
         h('button', { class: 'nw-s', type: 'button', on: { click: function () { state.expanded = true; mark('undismiss'); rebuild() } } }, 'Show welcome'),

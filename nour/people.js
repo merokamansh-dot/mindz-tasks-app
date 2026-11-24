@@ -6,6 +6,7 @@
    If anything is missing (no session, no anchor, error) it shows nothing. */
 (function () {
   'use strict'
+  if (window.__mzPeople) return; window.__mzPeople = 1
   var C = window.__MINDZ_CONFIG || {}
   if (!C.url || !C.anonKey || !window.supabase) return
   var KEY = 'sb-' + (C.url.replace(/^https?:\/\//, '').split('.')[0]) + '-auth-token'
