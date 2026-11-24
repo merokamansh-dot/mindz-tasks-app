@@ -176,15 +176,47 @@
   }
   async function briefing() { setState('thinking'); var o = await gather(); L.seen = { apps: o.apps, cases: o.cases }; L.last = o; await say(briefText(o)); if (L.live) listen() }
 
-  var LOCAL = [[/ملخص|النهارده|brief|today|summary/i, 'brief'], [/موافق|approv/i, 'apps'], [/شكو|قضي|قضا|حال|case|complain|concern/i, 'cases'], [/اجاز|إجاز|رصيد|leave|balance/i, 'leave']]
+  // Basic mode: free, private, runs in the browser with the caller's own session. Used while no external AI key is configured.
+  var LOCAL = [[/ملخص|النهارده|brief|today|summary/i, 'brief'], [/موافق|approv/i, 'apps'], [/شكو|قضي|قضا|حال|case|complain|concern|تحرش|تنمر|ظلم|harass|bully/i, 'cases'], [/اجاز|إجاز|رصيد|leave|balance|vacation|sick|مرضي|اعتيادي/i, 'leave']]
+  function isoD(d) { var z = new Date(d.getTime() - d.getTimezoneOffset() * 6e4); return z.toISOString().slice(0, 10) }
+  function parseDates(t) {
+    var m = t.match(/\d{4}-\d{2}-\d{2}/g) || [], now = new Date()
+    if (!m.length) { if (/بكرة|بكره|tomorrow/i.test(t)) { var d = new Date(now.getTime() + 864e5); m = [isoD(d)] } else if (/النهارده|today/i.test(t)) m = [isoD(now)] }
+    return m.length === 1 ? [m[0], m[0]] : m.slice(0, 2)
+  }
+  async function leaveFlow(text, ar) {
+    var yes = /^(ايوه|أيوه|ايوا|أيوا|تمام|اه|آه|yes|y|ok|confirm|اكد|أكد)(?=\s|$|[.!؟?،])/i.test(text.trim()), no = /^(لا|لأ|no|cancel|الغي|إلغاء)(?=\s|$|[.!؟?،])/i.test(text.trim())
+    if (L.pend && (yes || no)) { var q = L.pend; L.pend = null
+      if (no) { await say(ar ? 'تمام، ما قدمتش حاجة.' : 'Okay, I did not submit anything.'); return true }
+      var r = await sb.rpc('hr_submit_leave', { p_ws: ws, p_type: q.type, p_start: q.s, p_end: q.e, p_reason: q.reason })
+      await say(r.error ? (ar ? 'ماقدرتش أقدم الطلب: ' : 'I could not submit it: ') + r.error.message : (ar ? 'اتقدم الطلب لـ HR عشان القرار. هتوصلك النتيجة هنا.' : 'Submitted to HR for a decision. You will see the result here.')); return true }
+    var ds = parseDates(text); if (!ds.length || !/(عايز|محتاج|اطلب|أطلب|قدم|request|apply|need|take|want|book)/i.test(text)) return false
+    var ty = (await sb.from('hr_leave_types').select('id,name').eq('workspace_id', ws).eq('active', true)).data || []
+    var sick = /مرض|sick/i.test(text), pick = ty.filter(function (x) { return sick ? /sick|مرض/i.test(x.name) : /annual|اعتياد|سنو/i.test(x.name) })[0]
+    if (!pick) { await say(ar ? 'مش لاقية نوع الإجازة المناسب. افتح "My HR" وقدم الطلب من هناك.' : 'I could not match the leave type. Please use My HR to submit it.'); return true }
+    if (ds[1] < ds[0]) { await say(ar ? 'تاريخ النهاية قبل البداية، قولي التواريخ تاني.' : 'The end date is before the start date. Tell me the dates again.'); return true }
+    L.pend = { type: pick.id, s: ds[0], e: ds[1], reason: text.slice(0, 300) }
+    await say((ar ? 'هقدم طلب ' : 'I will submit a ') + pick.name + (ar ? ' من ' : ' request from ') + ds[0] + (ar ? ' إلى ' : ' to ') + ds[1] + (ar ? '. أقدّمه؟ (أيوه / لا)' : '. Shall I submit it? (yes / no)')); return true
+  }
   async function local(text) {
+    var ar = L.lang === 'ar' || /[؀-ۿ]/.test(text)
+    if (await leaveFlow(text, ar)) return true
     var k = null; LOCAL.forEach(function (p) { if (!k && p[0].test(text)) k = p[1] })
-    var o = L.last || await gather(), t = tx(), ar = L.lang === 'ar'
+    var t = tx()
+    if (/^(مرحبا|اهلا|أهلا|هاي|صباح|مساء|السلام|hi|hello|hey|good (morning|evening))/i.test(text.trim())) { await say(t.hello(firstName()) + (ar ? 'تحب أساعدك في إيه؟' : 'How can I help?')); return true }
+    if (/شكرا|شكراً|thank/i.test(text)) { await say(ar ? 'العفو، أنا موجودة.' : 'Anytime.'); return true }
+    if (/مين انت|انتي مين|who are you|what are you/i.test(text)) { await say(ar ? 'أنا نور، مديرة الموارد البشرية في مايندز. أنا ذكاء اصطناعي: بجهز وبنسق، والقرارات النهائية للإدارة.' : 'I am NOUR, MINDz’s HR manager. I am an AI: I prepare and coordinate, and final decisions stay with management.'); return true }
+    if (/اقتراح|فكرة|suggest/i.test(text) && !k) { await say(ar ? 'شكراً على الفكرة. اكتبها لي بالتفصيل في تبويب "Confidential" أو قولها للإدارة مباشرة، وأنا هتابعها.' : 'Thank you. Please write it up under the Confidential tab or tell management directly, and I will follow it.'); return true }
+    if (isHR && /overview|headcount|عدد الموظفين|نظرة عامة|اجمالي الموظفين/i.test(text)) { var ov = await sb.rpc('hr_overview', { p_ws: ws }); var d = ov.data || {}; var ks = Object.keys(d).filter(function (x) { return typeof d[x] === 'number' }).slice(0, 6)
+      await say(ks.length ? ks.map(function (x) { return x.replace(/_/g, ' ') + ': ' + d[x] }).join(ar ? '، ' : ', ') : (ar ? 'مفيش أرقام متاحة دلوقتي.' : 'No figures available right now.')); return true }
+    if (/راتب|مرتب|مكاف|خصم|salary|payroll|bonus|deduction|عقد|contract|عرض وظيف|offer|توظيف|hire|recruit|تقييم|performance|review/i.test(text) && !k) { await say(ar ? 'ده شغل بيتم من تبويبات Z Cloud بصلاحياتك (الرواتب والمكافآت والعقود والتوظيف والتقييم). والقرار النهائي دايماً للإدارة. قولي تحب أفتحلك أنهي جزء.' : 'That lives in the Z Cloud tabs under your permissions (payroll, bonuses, contracts, hiring, reviews), and final decisions always stay with management. Tell me which part you want.'); return true }
+    var o = L.last || await gather()
     if (k === 'brief') { await briefing(); return true }
     if (k === 'apps') { var r = await sb.from('nour_approvals').select('code,action_type,status').eq('workspace_id', ws).eq('status', 'PENDING_APPROVAL').limit(5); var rows = r.data || []
       await say(rows.length ? (ar ? 'الموافقات المستنية: ' : 'Waiting approvals: ') + rows.map(function (x) { return x.code + ' ' + x.action_type.replace(/_/g, ' ') }).join(ar ? '، ' : ', ') + (ar ? '. افتح تبويب الموافقات عشان تقرر.' : '. Open the Approvals tab to decide.') : (ar ? 'مفيش موافقات مستنية.' : 'No approvals waiting.')); return true }
-    if (k === 'cases') { await say(o.cases ? t.cases(o.cases) + (ar ? '. افتح تبويب القضايا.' : '. Open the Cases tab.') : (ar ? 'مفيش قضايا مفتوحة.' : 'No open cases.')); return true }
-    if (k === 'leave') { var b = (o.ctx && o.ctx.leave_balances || []).filter(function (x) { return x.remaining != null }); await say(b.length ? b.map(function (x) { return x.name + ': ' + x.remaining }).join(ar ? '، ' : ', ') : (ar ? 'مفيش رصيد مسجل.' : 'No balance recorded.')); return true }
+    if (k === 'cases') { if (isHandler) await say(o.cases ? t.cases(o.cases) + (ar ? '. افتح تبويب Cases.' : '. Open the Cases tab.') : (ar ? 'مفيش قضايا مفتوحة.' : 'No open cases.'))
+      else await say(ar ? 'أنا آسفة إنك بتمر بده. تقدر تبلّغ بشكل سري من تبويب "Confidential". الشكوى بتروح للجهة المستقلة اللي عينتها الشركة، ومدير الشركة وHR والزملاء مش بيشوفوها.' : 'I am sorry you are dealing with that. You can raise it privately under the Confidential tab. It goes to the independent recipient the company appointed; the Director, HR and colleagues cannot see it.'); return true }
+    if (k === 'leave') { var b = (o.ctx && o.ctx.leave_balances || []).filter(function (x) { return x.remaining != null }); await say((b.length ? b.map(function (x) { return x.name + ': ' + x.remaining }).join(ar ? '، ' : ', ') : (ar ? 'مفيش رصيد مسجل.' : 'No balance recorded.')) + (ar ? ' لو عايز تقدم إجازة قولي مثلاً: عايز إجازة من 2026-12-01 لـ 2026-12-03.' : ' To request leave, say for example: I need leave from 2026-12-01 to 2026-12-03.')); return true }
     return false
   }
 
@@ -196,7 +228,7 @@
       var r = await fetch(C.url + '/functions/v1/nour-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ workspace_id: ws, messages: chat.filter(function (c) { return !c.sys }).slice(-20).map(function (c) { return { role: c.role, content: c.content } }) }) })
       var j = await r.json().catch(function () { return {} })
       if (r.ok && j.reply) { busy = false; await say(j.reply) }
-      else if (j.error === 'brain_offline') { busy = false; chat.pop(); chat.push({ role: 'user', content: text }); if (!(await local(text))) await say(tx().brainOff) }
+      else if (j.error === 'brain_offline') { busy = false; chat.pop(); chat.push({ role: 'user', content: text }); if (!(await local(text))) await say(L.lang === 'ar' || /[\u0600-\u06FF]/.test(text) ? 'أنا شغالة بالوضع الأساسي دلوقتي. أقدر أساعدك في: رصيد الإجازات وطلب إجازة، الموافقات، الملخص اليومي، والتبليغ السري عن مشكلة. قولي تحب إيه.' : 'I am in basic mode right now. I can help with leave balance and leave requests, approvals, the daily summary, and raising a concern privately. What would you like?') }
       else { busy = false; await say(j.message || (L.lang === 'ar' ? 'حصلت مشكلة، جرب تاني.' : 'Something went wrong, please try again.')) }
     } catch (e) { busy = false; await say(L.lang === 'ar' ? 'في مشكلة في الشبكة.' : 'Network problem.') }
     busy = false; setState('idle'); if (L.live && L.started && tab === 'chat') setTimeout(listen, 500)
@@ -223,7 +255,7 @@
   }
   function vChat(main) {
     firstGreeting()
-    var ai = h('div', { class: 'pill bad', role: 'status', style: 'margin:6px 0;display:inline-block' }, 'AI conversation: OFFLINE (answers come from HR data only)')
+    var ai = h('div', { class: 'pill bad', role: 'status', style: 'margin:6px 0;display:inline-block' }, 'NOUR is online in BASIC mode (built-in, private, no external AI). Full AI conversation: OFFLINE until a key is added.')
     main.appendChild(ai)
     ;(async function () { try { var r = await sb.functions.invoke('nour-chat', { body: { ping: true } }); if (r.data && r.data.key_present) { ai.className = 'pill warn'; ai.textContent = 'AI conversation: key present, not yet live-tested' } } catch (e) { /* stays OFFLINE */ } })()
     var wrap = h('div', { class: 'live' }), av = avatarSVG()
