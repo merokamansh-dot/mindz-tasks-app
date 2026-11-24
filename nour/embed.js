@@ -387,6 +387,23 @@
     if (rm && rm[2] && rm[2].length > 2) { var ds2 = parseDates(text), due = ds2.length ? ds2[0] : null
       var fr = await sb.rpc('nour_followup_add', { p_ws: ws, p_user: me.id, p_title: rm[2].slice(0, 200), p_due: due, p_detail: null, p_via_nour: true })
       await say(fr.error ? (ar ? 'ماقدرتش أسجلها: ' : 'I could not save it: ') + fr.error.message : (ar ? 'تمام، سجلتها وهفكرك' + (due ? ' يوم ' + due : '') + '.' : 'Noted, I will remind you' + (due ? ' on ' + due : '') + '.')); return true }
+    // 5b) announce to all employees (bell notification) — only the Director's explicit order
+    var annV = /(ابعت|ابعتي|ارسل|ارسلي|وجهي|انشر|انشري|اكتب|اكتبي|send|post|publish|broadcast|announce|write)/.test(q), annT = /(للموظفين|لكل الموظفين|لجميع الموظفين|للفريق|لكل الفريق|للكل|لكل الناس|to (all )?(the )?(employees|staff|team|everyone)|all (the )?(employees|staff)|everyone)/.test(q), annM = /(رساله|رسالة|اعلان|تحيه|تحية|ترحيب|تعارف|message|announcement|greeting|welcome|intro)/.test(q)
+    if (annV && annT && annM) {
+      var greet = /(تحيه|تحية|ترحيب|تعارف|greeting|welcome|intro|know you|تعرفهم|تعرفوا)/.test(q)
+      var cm = /[:：]\s*([\s\S]{8,})$/.exec(text.trim()), ttl, body
+      if (cm && !greet) { ttl = ar ? 'رسالة من نور' : 'A message from NOUR'; body = cm[1].trim().slice(0, 1500) }
+      else if (greet) { ttl = 'أهلاً بيكم من نور'; body = 'أنا نور، مديرة الموارد البشرية الجديدة في مايندز (مساعدة بالذكاء الاصطناعي). تقدروا تكلموني من صفحة Home في Z Cloud في أي وقت: تطلبوا إجازة، تسألوا عن رصيدكم، تتعلموا أي قسم في السيستم، أو تبعتوا ملاحظة أو شكوى بشكل خاص. أنا هنا أساعدكم، وأي حاجة مش قادرة عليها بوصلها للإدارة.' }
+      else { await say(ar ? 'عايزة أبعت إيه بالظبط؟ اكتب النص بعد نقطتين، مثلاً: ابعت للموظفين رسالة: اجتماع الفريق الأحد 10 الصبح.' : 'What exactly should I send? Put the text after a colon, for example: send to all employees: team meeting Sunday 10am.'); return true }
+      if (L.annSent === body) { await say(ar ? 'الرسالة دي اتبعتت قبل كده في المحادثة دي. لو عايزها تتبعت تاني قولي.' : 'I already sent that one in this chat. Tell me if you want it sent again.'); return true }
+      var ar2 = await sb.rpc('hr_send_announcement', { p_ws: ws, p_title: ttl, p_body: body, p_user_ids: null })
+      if (ar2.error) { await say((ar ? 'ماقدرتش أبعتها: ' : 'I could not send it: ') + ar2.error.message); return true }
+      L.annSent = body
+      await say(ar ? 'تم يا ' + dirName() + '، بعت الرسالة لـ ' + ar2.data + ' موظف على الجرس في Z Cloud (مش إيميل). ' + (greet ? 'وقسم الترحيب بتاعي ' + (settings.welcome_published ? 'ظاهر لهم أصلاً' : 'لسه ما اتنشرش') + ' على صفحة Home.\nنص الرسالة: "' + body.slice(0, 200) + '"' : 'نصها: "' + body.slice(0, 200) + '"') : 'Done, ' + dirName() + '. I sent it to ' + ar2.data + ' employees on the Z Cloud bell (not email). ' + (greet ? 'My welcome section is ' + (settings.welcome_published ? 'already visible' : 'not published yet') + ' on the Home page.' : '')); return true }
+    // 5c) any other order I cannot execute in basic mode: say so honestly instead of answering with a tutorial
+    if (/^(?:(?:نور|nour)[\s،,]+)?(ابعت|ابعتي|ارسل|ارسلي|انشر|انشري|فعل|فعلي|اعمل|اعملي|ضيف|ضيفي|احذف|احذفي|امسح|امسحي|غيري|عدلي|اقفلي|افتحي|اطلبي|حددي|جهزي|اكتبي|سجلي|حولي|send|publish|activate|enable|disable|create|add|delete|remove|change|update|edit|set|schedule|close|open|prepare|write|assign|transfer)(?=\s|$|[:،,.!؟?])/.test(qt)) {
+      logUnanswered(text)
+      await say(ar ? 'فهمت إنه أمر يا ' + dirName() + '، بس مش هنفذه غلط: في الوضع الأساسي بنفذ بس الأوامر دي: حفظ قاعدة ("اتعلمي ..."), الموافقة على الإجازات أو رفضها, الموافقات بالكود, "فكريني ...", وإرسال رسالة لكل الموظفين ("ابعت للموظفين رسالة: ..."). الأمر ده سجلته عندي، وهنفذه من هنا لما نشغل الذكاء الكامل، أو قوله لـ Claude في الشغل وهو ينفذه فورًا.' : 'I understood that as an order, ' + dirName() + ', but I will not guess: in basic mode I execute only: saving a rule ("remember that ..."), approving or rejecting leave, approvals by code, "remind me ...", and messaging all employees ("send to all employees: ..."). I have logged this order, and I will run it when the full AI is switched on, or you can ask Claude directly and it runs it right away.'); return true }
     // 6) taught notes (only when asked about something the Director taught)
     return false
   }
