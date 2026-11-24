@@ -125,7 +125,7 @@
     var show = !!st && (st.published || st.can_preview) && !!token()
     var anchor = document.querySelector('.home-block')
     if (!show || !anchor) { if (cur && !anchor) cur.remove(); if (cur && !show) cur.remove(); return }
-    if (cur && cur.nextElementSibling === anchor) return
+    if (cur && (cur.nextElementSibling === anchor || (cur.nextElementSibling && cur.nextElementSibling.id === 'mz-people'))) return
     if (cur) cur.remove()
     anchor.parentNode.insertBefore(build(), anchor)
   }
