@@ -169,7 +169,7 @@
   "kw": [
    "(new|create|add|submit|start|make|open) (a |an |the )?(new )?briefs?",
    "بريف جديد|اعمل بريف|اقدم بريف|اضيف بريف|عمل بريف|ضيف بريف",
-   "wizard|seven.?step|7.?step|خطوات",
+   "wizard|seven.?step|7.?step|خطوات.*(بريف|brief)|(بريف|brief).*خطوات",
    "how.*brief|ازاي.*بريف",
    "briefs?|بريف"
   ],
