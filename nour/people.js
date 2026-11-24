@@ -169,17 +169,22 @@
   var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st)
 
   var raf = 0
+  // Sits under the greeting hero of the real home (<main class="hh"> > ".hh-hero"), after the NOUR welcome block when it is shown.
   function ensure() {
-    var cur = document.getElementById(ID), anchor = document.querySelector('.home-block')
-    if (!S.ready || !anchor || !token()) { if (cur && !anchor) cur.remove(); return }
-    var wel = document.getElementById('nour-welcome')   // sit right after the NOUR welcome block when it is shown
-    if (cur && (wel && wel.parentNode === anchor.parentNode ? wel.nextElementSibling === cur : cur.nextElementSibling === anchor)) return
+    var cur = document.getElementById(ID), hero = document.querySelector('.hh-hero'), anchor = hero ? null : document.querySelector('.home-block')
+    if (!S.ready || (!hero && !anchor) || !token()) { if (cur && !hero && !anchor) cur.remove(); return }
+    if (hero) {
+      var wel = document.getElementById('nour-welcome'), base = wel && wel.parentNode === hero.parentNode ? wel : hero
+      if (cur && cur.previousElementSibling === base) return
+      if (cur) cur.remove()
+      base.parentNode.insertBefore(build(), base.nextSibling); return
+    }
+    if (cur && cur.nextElementSibling === anchor) return
     if (cur) cur.remove()
-    var n = build()
-    if (wel && wel.parentNode === anchor.parentNode) wel.parentNode.insertBefore(n, wel.nextSibling); else anchor.parentNode.insertBefore(n, anchor)
+    anchor.parentNode.insertBefore(build(), anchor)
   }
   function tick() {
-    if (!document.querySelector('.home-block')) { var c = document.getElementById(ID); if (c) c.remove(); return }
+    if (!document.querySelector('.hh-hero') && !document.querySelector('.home-block')) { var c = document.getElementById(ID); if (c) c.remove(); return }
     if (!document.getElementById(ID)) load(false)
     ensure()
   }

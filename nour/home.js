@@ -120,17 +120,20 @@
   function rebuild() { var o = document.getElementById(ID); if (o) { var n = build(); o.parentNode.replaceChild(n, o) } }
 
   var raf = 0
+  // The real Z Cloud home is <main class="hh"> with a ".hh-hero" greeting at the top. The block sits right under it.
+  // (".home-block" is only the "brain in motion" tab of the About card, so it is a fallback only.)
   function ensure() {
     var st = state.status, cur = document.getElementById(ID)
     var show = !!st && (st.published || st.can_preview) && !!token()
-    var anchor = document.querySelector('.home-block')
-    if (!show || !anchor) { if (cur && !anchor) cur.remove(); if (cur && !show) cur.remove(); return }
+    var hero = document.querySelector('.hh-hero'), anchor = hero ? null : document.querySelector('.home-block')
+    if (!show || (!hero && !anchor)) { if (cur) cur.remove(); return }
+    if (hero) { if (cur && cur.previousElementSibling === hero) return; if (cur) cur.remove(); hero.parentNode.insertBefore(build(), hero.nextSibling); return }
     if (cur && (cur.nextElementSibling === anchor || (cur.nextElementSibling && cur.nextElementSibling.id === 'mz-people'))) return
     if (cur) cur.remove()
     anchor.parentNode.insertBefore(build(), anchor)
   }
   function tick() {
-    if (!document.querySelector('.home-block')) { var c = document.getElementById(ID); if (c) c.remove(); return }
+    if (!document.querySelector('.hh-hero') && !document.querySelector('.home-block')) { var c = document.getElementById(ID); if (c) c.remove(); return }
     if (!document.getElementById(ID)) load()
     ensure()
   }
