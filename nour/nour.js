@@ -69,7 +69,7 @@
   }
 
   // ---------- NOUR live: face, voice, proactive ----------
-  var L = { started: false, live: true, lang: 'ar', mute: false, state: 'idle', mouth: 0, elevenOK: null, rec: null, audio: null, ctx: null, timer: null, poll: null, seen: null, mouthT: null }
+  var L = { started: false, live: true, lang: 'ar', mute: false, state: 'idle', mouth: 0, elevenOK: false, rec: null, audio: null, ctx: null, timer: null, poll: null, seen: null, mouthT: null }
   var T = {
     ar: { hello: function (n) { return 'أهلاً يا ' + n + '، أنا نور، مديرة الموارد البشرية في مايندز. ' }, none: 'مفيش حاجة مستنية قرارك دلوقتي. كل حاجة ماشية تمام.', ask: 'تحب أبدأ بإيه؟', apps: function (n) { return n + ' موافقة مستنية قرارك' }, cases: function (n) { return n + ' شكوى أو قضية مفتوحة' }, fu: function (n) { return n + ' متابعة موعدها جه' }, leave: function (n) { return n + ' طلب إجازة مستني' }, newApp: 'في موافقة جديدة محتاجة قرارك.', newCase: 'وصلتني حالة سرية جديدة، افتح تبويب القضايا.', brainOff: 'عقلي المحادثي لسه مش متوصل، بس أقدر أقولك الملخص والموافقات والإجازات. قول ملخص أو موافقات أو إجازات.', listening: 'بسمعك…', start: 'ابدأ مع نور', empA: function (n) { return 'رصيد إجازتك السنوية ' + n + ' يوم. ' } },
     en: { hello: function (n) { return 'Hello ' + n + ', I am NOUR, the Head of HR at MINDz. ' }, none: 'Nothing is waiting for your decision right now. All is on track.', ask: 'Where shall I start?', apps: function (n) { return n + ' approval' + (n == 1 ? '' : 's') + ' waiting for your decision' }, cases: function (n) { return n + ' open case' + (n == 1 ? '' : 's') }, fu: function (n) { return n + ' follow-up' + (n == 1 ? ' is' : 's are') + ' due' }, leave: function (n) { return n + ' leave request' + (n == 1 ? '' : 's') + ' pending' }, newApp: 'A new approval needs your decision.', newCase: 'A new confidential case just arrived. Please open the Cases tab.', brainOff: 'My conversation brain is not connected yet, but I can give you the brief, approvals and leave. Say brief, approvals or leave.', listening: 'Listening…', start: 'Start NOUR', empA: function (n) { return 'Your annual leave balance is ' + n + ' days. ' } }
@@ -98,11 +98,27 @@
     list.appendChild(h('div', { class: 'm ' + (role === 'user' ? 'u' : sys ? 'sys' : 'n'), dir: 'auto' }, text)); list.scrollTop = list.scrollHeight
   }
 
-  function pickVoice() {
+  function voiceList() {
     var vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [], want = L.lang === 'ar' ? 'ar' : 'en'
-    var c = vs.filter(function (v) { return v.lang && v.lang.toLowerCase().indexOf(want) === 0 })
-    var pref = c.filter(function (v) { return /EG/i.test(v.lang) }).concat(c.filter(function (v) { return /female|salma|laila|hoda|zira|aria|jenny|samantha|google/i.test(v.name) }), c)
-    return pref[0] || null
+    var c = vs.filter(function (v) { return v.lang && v.lang.toLowerCase().replace('_', '-').indexOf(want) === 0 })
+    function sc(v) {
+      var n = v.name || '', k = 0
+      if (/EG/i.test(v.lang)) k += 6
+      if (/natural|neural|online/i.test(n)) k += 5
+      if (/salma|laila|hoda|zeina|noura|hala|amira|zira|aria|jenny|samantha|sara|female|fatima|mariam|nora/i.test(n)) k += 4
+      if (/male(?!.*fe)|maged|tarik|naayf|hamed|shakir|david|mark|guy|ryan|google.*male/i.test(n) && !/female/i.test(n)) k -= 8
+      if (/google/i.test(n)) k += 1
+      if (v.localService === false) k += 1
+      return k
+    }
+    var r = c.sort(function (x, y) { return sc(y) - sc(x) }), f = r.filter(function (v) { return sc(v) > -4 })
+    return f.length ? f : r
+  }
+  function pickVoice() {
+    var c = voiceList(), saved = ''
+    try { saved = localStorage.getItem('nour_voice_' + L.lang) || '' } catch (e) {}
+    if (saved) { var m = c.filter(function (v) { return v.name === saved })[0]; if (m) return m }
+    return c[0] || null
   }
   function stopSpeaking() { try { if (L.audio) { L.audio.pause(); L.audio = null } if (window.speechSynthesis) speechSynthesis.cancel() } catch (e) {} clearInterval(L.mouthT); setMouth(0) }
   async function speakEleven(text) {
@@ -123,13 +139,18 @@
   function speakBrowser(text) {
     return new Promise(function (res) {
       if (!window.speechSynthesis) return res()
-      var u = new SpeechSynthesisUtterance(text), v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang } else u.lang = L.lang === 'ar' ? 'ar-EG' : 'en-US'
-      u.rate = 1; u.pitch = 1.05
-      u.onstart = function () { clearInterval(L.mouthT); L.mouthT = setInterval(function () { setMouth(0.15 + Math.random() * 0.75) }, 110) }
-      u.onend = u.onerror = function () { clearInterval(L.mouthT); setMouth(0); res() }
-      var guard = setTimeout(function () { clearInterval(L.mouthT); setMouth(0); res() }, 4000 + text.length * 110)
-      var done = res; res = function () { clearTimeout(guard); done() }
-      speechSynthesis.speak(u)
+      var v = pickVoice(), parts = String(text).match(/[^.!؟?\n]+[.!؟?]*/g) || [String(text)], n = 0, fin = false
+      parts = parts.map(function (x) { return x.trim() }).filter(Boolean)
+      function done() { if (fin) return; fin = true; clearTimeout(guard); clearInterval(L.mouthT); setMouth(0); res() }
+      var guard = setTimeout(done, 6000 + text.length * 120)
+      if (!parts.length) return done()
+      parts.forEach(function (t, i) {
+        var u = new SpeechSynthesisUtterance(t); if (v) { u.voice = v; u.lang = v.lang } else u.lang = L.lang === 'ar' ? 'ar-EG' : 'en-US'
+        u.rate = 0.97; u.pitch = 1.08
+        u.onstart = function () { clearInterval(L.mouthT); L.mouthT = setInterval(function () { setMouth(0.15 + Math.random() * 0.75) }, 110) }
+        u.onend = u.onerror = function () { if (++n >= parts.length) done() }
+        speechSynthesis.speak(u)
+      })
     })
   }
   async function say(text) {
@@ -140,6 +161,7 @@
     await speakBrowser(text); setState('idle')
   }
 
+  try { if (window.speechSynthesis) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = function () {} } } catch (e) {}
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition
   function stopListening() { try { if (L.rec) { L.rec.onend = null; L.rec.abort() } } catch (e) {} L.rec = null; if (L.state === 'listening') setState('idle') }
   function listen() {
@@ -262,7 +284,7 @@
     var st = h('div', { id: 'nst', class: 'nst' }), list = h('div', { id: 'nlist', class: 'msgs' })
     var inp = h('textarea', { id: 'nin', dir: 'auto', placeholder: L.lang === 'ar' ? 'اكتب أو اتكلم…' : 'Type or speak…', maxlength: '2000' })
     var send = h('button', { class: 'p' }, L.lang === 'ar' ? 'إرسال' : 'Send')
-    var mic = h('button', { class: 's', title: 'Mic' }, '🎙'), live = h('button', { class: 's' }, L.live ? 'Live: on' : 'Live: off'), lang = h('button', { class: 's' }, L.lang === 'ar' ? 'عربي' : 'EN'), mute = h('button', { class: 's' }, L.mute ? 'Voice: off' : 'Voice: on')
+    var mic = h('button', { class: 's', title: 'Mic' }, '🎙'), live = h('button', { class: 's' }, L.live ? 'Live: on' : 'Live: off'), lang = h('button', { class: 's' }, L.lang === 'ar' ? 'عربي' : 'EN'), mute = h('button', { class: 's' }, L.mute ? 'Voice: off' : 'Voice: on'), vc = h('button', { class: 's' }, L.lang === 'ar' ? 'غيّر الصوت' : 'Change voice')
     var start = h('button', { class: 'p big' }, tx().start)
     chat.forEach(function (c) { list.appendChild(h('div', { class: 'm ' + (c.role === 'user' ? 'u' : c.sys ? 'sys' : 'n'), dir: 'auto' }, c.content)) })
     function go() { var t = inp.value.trim(); if (!t) return; inp.value = ''; if (!L.started) { L.started = true; startWatch() } handle(t) }
@@ -271,11 +293,19 @@
     live.addEventListener('click', function () { L.live = !L.live; live.textContent = L.live ? 'Live: on' : 'Live: off'; if (L.live) listen(); else stopListening() })
     lang.addEventListener('click', function () { L.lang = L.lang === 'ar' ? 'en' : 'ar'; stopListening(); stopSpeaking(); render() })
     mute.addEventListener('click', function () { L.mute = !L.mute; mute.textContent = L.mute ? 'Voice: off' : 'Voice: on'; if (L.mute) stopSpeaking() })
+    vc.addEventListener('click', function () {
+      var c = voiceList(); if (!c.length) { addMsg('assistant', L.lang === 'ar' ? 'جهازك مفيهوش أصوات عربي. جرّب Chrome أو Edge، أو نزّل صوت عربي من إعدادات النظام.' : 'No voices for this language on this device.', true); return }
+      var cur = pickVoice(), i = (c.indexOf(cur) + 1) % c.length, v = c[i]
+      try { localStorage.setItem('nour_voice_' + L.lang, v.name) } catch (e) {}
+      L.started = true; stopSpeaking(); setState('speaking')
+      addMsg('assistant', (L.lang === 'ar' ? 'ده صوتي دلوقتي (' : 'Voice (') + v.name + ' ' + (i + 1) + '/' + c.length + ')', true)
+      speakBrowser(L.lang === 'ar' ? 'أهلاً، أنا نور. تحب أكلمك بالصوت ده؟' : 'Hi, I am NOUR. Shall I use this voice?').then(function () { setState('idle') })
+    })
     start.addEventListener('click', function () { L.started = true; start.parentNode.style.display = 'none'; startWatch(); briefing() })
     wrap.appendChild(av); wrap.appendChild(st)
     if (!L.started) wrap.appendChild(h('div', { class: 'center' }, start, h('div', { class: 'priv' }, 'One tap lets the browser play her voice. After that she talks on her own.')))
     wrap.appendChild(list)
-    wrap.appendChild(h('div', { class: 'row ctl' }, mic, live, lang, mute))
+    wrap.appendChild(h('div', { class: 'row ctl' }, mic, live, lang, mute, vc))
     wrap.appendChild(h('div', { class: 'compose' }, inp, send))
     wrap.appendChild(h('div', { class: 'priv' }, 'Chats are not stored. Actions NOUR takes are logged. She never approves or executes anything for you.'))
     main.appendChild(wrap); setState(L.state); setMouth(0); setTimeout(function () { list.scrollTop = list.scrollHeight }, 0)
