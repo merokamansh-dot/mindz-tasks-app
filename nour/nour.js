@@ -38,7 +38,7 @@
   }
 
   var TABS = function () {
-    var t = [['chat', 'Ask NOUR'], ['me', 'My HR'], ['concern', 'Confidential']]
+    var t = [['chat', 'NOUR Live'], ['me', 'My HR'], ['concern', 'Confidential']]
     if (isHR) t.push(['approvals', 'Approvals'], ['cases', 'Cases'], ['team', 'Team'])
     if (isDir) t.push(['admin', 'Control'])
     return t
@@ -56,31 +56,186 @@
     ;({ chat: vChat, me: vMe, concern: vConcern, approvals: vApprovals, cases: vCases, team: vTeam, admin: vAdmin })[tab](main)
   }
 
-  // ---------- chat ----------
-  function vChat(main) {
-    var box = h('div', { class: 'chat' }), list = h('div', { class: 'msgs' }), ta = h('textarea', { placeholder: 'اسألني عن إجازاتك أو أي حاجة في الـ HR… / Ask about leave, policies, or a concern', dir: 'auto', maxlength: '4000' }), send = h('button', { class: 'p' }, 'Send')
-    if (!chat.length) list.appendChild(msg('m sys', 'I can show your leave balances, add follow-ups, explain policy (flagging anything unverified) and open a confidential case if you ask me to.'))
-    chat.forEach(function (c) { list.appendChild(h('div', { class: 'm ' + (c.role === 'user' ? 'u' : c.sys ? 'sys' : 'n'), dir: 'auto' }, c.content)) })
-    async function go() {
-      var t = ta.value.trim(); if (!t || busy) return
-      busy = true; send.disabled = true; ta.value = ''
-      chat.push({ role: 'user', content: t }); render2()
-      try {
-        var tok = (await sb.auth.getSession()).data.session.access_token
-        var r = await fetch(C.url + '/functions/v1/nour-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ workspace_id: ws, messages: chat.filter(function (c) { return !c.sys }).map(function (c) { return { role: c.role, content: c.content } }) }) })
-        var j = await r.json().catch(function () { return {} })
-        if (r.ok && j.reply) chat.push({ role: 'assistant', content: j.reply })
-        else if (j.error === 'brain_offline') chat.push({ role: 'assistant', sys: true, content: "NOUR's AI brain is not connected yet (key pending). The other tabs work now." })
-        else chat.push({ role: 'assistant', sys: true, content: j.message || ('NOUR could not answer (' + (j.error || r.status) + ').') })
-      } catch (e) { chat.push({ role: 'assistant', sys: true, content: 'Network problem. Please try again.' }) }
-      busy = false; render2()
+  // ---------- NOUR live: face, voice, proactive ----------
+  var L = { started: false, live: true, lang: 'ar', mute: false, state: 'idle', mouth: 0, elevenOK: null, rec: null, audio: null, ctx: null, timer: null, poll: null, seen: null, mouthT: null }
+  var T = {
+    ar: { hello: function (n) { return 'أهلاً يا ' + n + '، أنا نور، مديرة الموارد البشرية في مايندز. ' }, none: 'مفيش حاجة مستنية قرارك دلوقتي. كل حاجة ماشية تمام.', ask: 'تحب أبدأ بإيه؟', apps: function (n) { return n + ' موافقة مستنية قرارك' }, cases: function (n) { return n + ' شكوى أو قضية مفتوحة' }, fu: function (n) { return n + ' متابعة موعدها جه' }, leave: function (n) { return n + ' طلب إجازة مستني' }, newApp: 'في موافقة جديدة محتاجة قرارك.', newCase: 'وصلتني حالة سرية جديدة، افتح تبويب القضايا.', brainOff: 'عقلي المحادثي لسه مش متوصل، بس أقدر أقولك الملخص والموافقات والإجازات. قول ملخص أو موافقات أو إجازات.', listening: 'بسمعك…', start: 'ابدأ مع نور', empA: function (n) { return 'رصيد إجازتك السنوية ' + n + ' يوم. ' } },
+    en: { hello: function (n) { return 'Hello ' + n + ', I am NOUR, the Head of HR at MINDz. ' }, none: 'Nothing is waiting for your decision right now. All is on track.', ask: 'Where shall I start?', apps: function (n) { return n + ' approval' + (n == 1 ? '' : 's') + ' waiting for your decision' }, cases: function (n) { return n + ' open case' + (n == 1 ? '' : 's') }, fu: function (n) { return n + ' follow-up' + (n == 1 ? ' is' : 's are') + ' due' }, leave: function (n) { return n + ' leave request' + (n == 1 ? '' : 's') + ' pending' }, newApp: 'A new approval needs your decision.', newCase: 'A new confidential case just arrived. Please open the Cases tab.', brainOff: 'My conversation brain is not connected yet, but I can give you the brief, approvals and leave. Say brief, approvals or leave.', listening: 'Listening…', start: 'Start NOUR', empA: function (n) { return 'Your annual leave balance is ' + n + ' days. ' } }
+  }
+  var firstName = function () { return (nm(me.id) || '').split(' ')[0] || '' }
+  function tx() { return T[L.lang] }
+
+  function avatarSVG() {
+    var ns = 'http://www.w3.org/2000/svg', d = document.createElement('div'); d.className = 'avwrap'
+    d.innerHTML = '<svg id="nav" viewBox="0 0 200 230" class="nav" aria-label="NOUR"><defs><clipPath id="fc"><ellipse cx="100" cy="108" rx="46" ry="56"/></clipPath></defs>' +
+      '<circle cx="100" cy="115" r="98" class="halo" fill="#0d5fb3" opacity=".12"/>' +
+      '<g class="breathe"><path d="M52 200 Q100 168 148 200 L160 230 L40 230Z" fill="#0d5fb3"/><path d="M84 192 L100 214 L116 192Z" fill="#fcff59"/>' +
+      '<rect x="88" y="150" width="24" height="34" rx="10" fill="#d9a07c"/>' +
+      '<path d="M48 112 Q46 40 100 38 Q154 40 152 112 Q152 150 140 164 L148 120 Q100 90 52 120 L60 164 Q48 150 48 112Z" fill="#14233b"/>' +
+      '<ellipse cx="100" cy="108" rx="46" ry="56" fill="#e8b48f"/>' +
+      '<path d="M54 100 Q62 52 100 50 Q142 52 146 100 Q128 70 100 70 Q74 70 54 100Z" fill="#14233b"/>' +
+      '<circle cx="56" cy="124" r="4" fill="#fcff59"/><circle cx="144" cy="124" r="4" fill="#fcff59"/>' +
+      '<g class="eyes"><ellipse cx="82" cy="108" rx="8" ry="6" fill="#fff"/><ellipse cx="118" cy="108" rx="8" ry="6" fill="#fff"/><circle cx="83" cy="108" r="3.6" fill="#3a2a22"/><circle cx="119" cy="108" r="3.6" fill="#3a2a22"/><circle cx="84.2" cy="106.8" r="1.1" fill="#fff"/><circle cx="120.2" cy="106.8" r="1.1" fill="#fff"/></g>' +
+      '<path d="M72 96 Q82 91 92 96M108 96 Q118 91 128 96" stroke="#14233b" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+      '<path d="M100 112 Q97 126 103 128" stroke="#c98f6b" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+      '<ellipse cx="72" cy="132" rx="8" ry="5" fill="#f19a8f" opacity=".35"/><ellipse cx="128" cy="132" rx="8" ry="5" fill="#f19a8f" opacity=".35"/>' +
+      '<path id="nsm" d="M84 142 Q100 154 116 142" stroke="#9a3b45" stroke-width="3.2" fill="none" stroke-linecap="round"/>' +
+      '<path id="nmo" d="M86 142 Q100 140 114 142 Q100 150 86 142Z" fill="#7a2230" style="display:none"/></g></svg>'
+    return d
+  }
+  function setMouth(o) {
+    L.mouth = o
+    var sm = document.getElementById('nsm'), mo = document.getElementById('nmo'); if (!sm || !mo) return
+    if (o < 0.07) { sm.style.display = ''; mo.style.display = 'none'; return }
+    sm.style.display = 'none'; mo.style.display = ''
+    mo.setAttribute('d', 'M86 142 Q100 ' + (140 - 2 * o) + ' 114 142 Q100 ' + (146 + 20 * o) + ' 86 142Z')
+  }
+  function setState(s) { L.state = s; var a = document.getElementById('nav'); if (a) a.setAttribute('data-s', s); var st = document.getElementById('nst'); if (st) st.textContent = ({ idle: '', listening: tx().listening, thinking: '…', speaking: '' })[s] || '' }
+
+  function addMsg(role, text, sys) {
+    chat.push({ role: role, content: text, sys: !!sys })
+    var list = document.getElementById('nlist'); if (!list) return
+    list.appendChild(h('div', { class: 'm ' + (role === 'user' ? 'u' : sys ? 'sys' : 'n'), dir: 'auto' }, text)); list.scrollTop = list.scrollHeight
+  }
+
+  function pickVoice() {
+    var vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [], want = L.lang === 'ar' ? 'ar' : 'en'
+    var c = vs.filter(function (v) { return v.lang && v.lang.toLowerCase().indexOf(want) === 0 })
+    var pref = c.filter(function (v) { return /EG/i.test(v.lang) }).concat(c.filter(function (v) { return /female|salma|laila|hoda|zira|aria|jenny|samantha|google/i.test(v.name) }), c)
+    return pref[0] || null
+  }
+  function stopSpeaking() { try { if (L.audio) { L.audio.pause(); L.audio = null } if (window.speechSynthesis) speechSynthesis.cancel() } catch (e) {} clearInterval(L.mouthT); setMouth(0) }
+  async function speakEleven(text) {
+    var tok = (await sb.auth.getSession()).data.session.access_token
+    var r = await fetch(C.url + '/functions/v1/nour-voice', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ text: text }) })
+    if (!r.ok) throw new Error('voice ' + r.status)
+    var blob = await r.blob(), url = URL.createObjectURL(blob), a = new Audio(url); L.audio = a
+    var AC = window.AudioContext || window.webkitAudioContext, an = null
+    try { L.ctx = L.ctx || new AC(); var src = L.ctx.createMediaElementSource(a); an = L.ctx.createAnalyser(); an.fftSize = 512; src.connect(an); an.connect(L.ctx.destination) } catch (e) { an = null }
+    var buf = an ? new Uint8Array(an.frequencyBinCount) : null
+    return new Promise(function (res) {
+      function tick() { if (!L.audio || L.audio !== a) return; if (an) { an.getByteTimeDomainData(buf); var s = 0; for (var i = 0; i < buf.length; i++) { var v = (buf[i] - 128) / 128; s += v * v } setMouth(Math.min(1, Math.sqrt(s / buf.length) * 5)) } else setMouth(Math.random() * 0.8); requestAnimationFrame(tick) }
+      a.onended = function () { URL.revokeObjectURL(url); L.audio = null; setMouth(0); res() }
+      a.onerror = function () { L.audio = null; setMouth(0); res() }
+      a.play().then(function () { tick() }).catch(function () { res() })
+    })
+  }
+  function speakBrowser(text) {
+    return new Promise(function (res) {
+      if (!window.speechSynthesis) return res()
+      var u = new SpeechSynthesisUtterance(text), v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang } else u.lang = L.lang === 'ar' ? 'ar-EG' : 'en-US'
+      u.rate = 1; u.pitch = 1.05
+      u.onstart = function () { clearInterval(L.mouthT); L.mouthT = setInterval(function () { setMouth(0.15 + Math.random() * 0.75) }, 110) }
+      u.onend = u.onerror = function () { clearInterval(L.mouthT); setMouth(0); res() }
+      var guard = setTimeout(function () { clearInterval(L.mouthT); setMouth(0); res() }, 4000 + text.length * 110)
+      var done = res; res = function () { clearTimeout(guard); done() }
+      speechSynthesis.speak(u)
+    })
+  }
+  async function say(text) {
+    addMsg('assistant', text)
+    if (L.mute) return
+    stopSpeaking(); setState('speaking')
+    if (L.elevenOK !== false) { try { await speakEleven(text); L.elevenOK = true; setState('idle'); return } catch (e) { if (L.elevenOK === null) L.elevenOK = false } }
+    await speakBrowser(text); setState('idle')
+  }
+
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition
+  function stopListening() { try { if (L.rec) { L.rec.onend = null; L.rec.abort() } } catch (e) {} L.rec = null; if (L.state === 'listening') setState('idle') }
+  function listen() {
+    if (!SR || !L.started || L.state === 'speaking' || tab !== 'chat') return
+    stopListening(); stopSpeaking()
+    var rc = new SR(); L.rec = rc; rc.lang = L.lang === 'ar' ? 'ar-EG' : 'en-US'; rc.interimResults = true; rc.continuous = false
+    var finalText = '', box = document.getElementById('nin')
+    rc.onstart = function () { setState('listening') }
+    rc.onresult = function (e) { var t = ''; for (var i = e.resultIndex; i < e.results.length; i++) { t += e.results[i][0].transcript; if (e.results[i].isFinal) finalText = t } if (box) box.value = t }
+    rc.onerror = function () { setState('idle') }
+    rc.onend = function () { L.rec = null; if (box) box.value = ''; setState('idle'); if (finalText.trim()) handle(finalText.trim()); else if (L.live && L.started && tab === 'chat') setTimeout(listen, 700) }
+    try { rc.start() } catch (e) { setState('idle') }
+  }
+
+  async function gather() {
+    var today = new Date().toISOString().slice(0, 10), o = { apps: 0, cases: 0, fu: 0, leave: 0, bal: null }
+    if (isHR) {
+      var a = await sb.from('nour_approvals').select('id', { count: 'exact', head: true }).eq('workspace_id', ws).eq('status', 'PENDING_APPROVAL'); o.apps = a.count || 0
+      var c = await sb.from('nour_cases').select('id,status', { count: 'exact' }).eq('workspace_id', ws).in('status', ['received', 'triage', 'escalated', 'investigating']); o.cases = c.count || 0
+      var f = await sb.from('nour_followups').select('id', { count: 'exact', head: true }).eq('workspace_id', ws).eq('status', 'open').lte('due_date', today); o.fu = f.count || 0
+      var l = await sb.from('hr_leave_requests').select('id', { count: 'exact', head: true }).eq('workspace_id', ws).eq('status', 'pending'); o.leave = l.error ? 0 : (l.count || 0)
     }
-    function render2() { if (tab === 'chat') render() }
-    send.addEventListener('click', go)
-    ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go() } })
-    box.appendChild(list); box.appendChild(h('div', { class: 'compose' }, ta, send))
-    box.appendChild(h('div', { class: 'priv' }, 'Chats are not stored. Actions NOUR takes are logged.'))
-    main.appendChild(box); setTimeout(function () { list.scrollTop = list.scrollHeight }, 0)
+    var ctx = await sb.rpc('nour_employee_context', { p_ws: ws, p_user: me.id })
+    if (!ctx.error && ctx.data) { o.ctx = ctx.data; var an = (ctx.data.leave_balances || []).filter(function (b) { return /annual/i.test(b.name) })[0]; if (an && an.remaining != null) o.bal = an.remaining }
+    return o
+  }
+  function briefText(o) {
+    var t = tx(), parts = []
+    if (o.apps) parts.push(t.apps(o.apps)); if (o.cases) parts.push(t.cases(o.cases)); if (o.fu) parts.push(t.fu(o.fu)); if (o.leave) parts.push(t.leave(o.leave))
+    var s = t.hello(firstName())
+    if (isHR) s += parts.length ? (L.lang === 'ar' ? 'النهارده عندك: ' : 'Today you have: ') + parts.join(L.lang === 'ar' ? '، و' : ', ') + '. ' + t.ask : t.none
+    else s += (o.bal != null ? t.empA(o.bal) : '') + (L.lang === 'ar' ? 'لو محتاج أي حاجة قولي.' : 'Tell me if you need anything.')
+    return s
+  }
+  async function briefing() { setState('thinking'); var o = await gather(); L.seen = { apps: o.apps, cases: o.cases }; L.last = o; await say(briefText(o)); if (L.live) listen() }
+
+  var LOCAL = [[/ملخص|النهارده|brief|today|summary/i, 'brief'], [/موافق|approv/i, 'apps'], [/شكو|قضي|قضا|حال|case|complain|concern/i, 'cases'], [/اجاز|إجاز|رصيد|leave|balance/i, 'leave']]
+  async function local(text) {
+    var k = null; LOCAL.forEach(function (p) { if (!k && p[0].test(text)) k = p[1] })
+    var o = L.last || await gather(), t = tx(), ar = L.lang === 'ar'
+    if (k === 'brief') { await briefing(); return true }
+    if (k === 'apps') { var r = await sb.from('nour_approvals').select('code,action_type,status').eq('workspace_id', ws).eq('status', 'PENDING_APPROVAL').limit(5); var rows = r.data || []
+      await say(rows.length ? (ar ? 'الموافقات المستنية: ' : 'Waiting approvals: ') + rows.map(function (x) { return x.code + ' ' + x.action_type.replace(/_/g, ' ') }).join(ar ? '، ' : ', ') + (ar ? '. افتح تبويب الموافقات عشان تقرر.' : '. Open the Approvals tab to decide.') : (ar ? 'مفيش موافقات مستنية.' : 'No approvals waiting.')); return true }
+    if (k === 'cases') { await say(o.cases ? t.cases(o.cases) + (ar ? '. افتح تبويب القضايا.' : '. Open the Cases tab.') : (ar ? 'مفيش قضايا مفتوحة.' : 'No open cases.')); return true }
+    if (k === 'leave') { var b = (o.ctx && o.ctx.leave_balances || []).filter(function (x) { return x.remaining != null }); await say(b.length ? b.map(function (x) { return x.name + ': ' + x.remaining }).join(ar ? '، ' : ', ') : (ar ? 'مفيش رصيد مسجل.' : 'No balance recorded.')); return true }
+    return false
+  }
+
+  async function handle(text) {
+    if (busy) return; busy = true; stopListening(); stopSpeaking()
+    addMsg('user', text); setState('thinking')
+    try {
+      var tok = (await sb.auth.getSession()).data.session.access_token
+      var r = await fetch(C.url + '/functions/v1/nour-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ workspace_id: ws, messages: chat.filter(function (c) { return !c.sys }).slice(-20).map(function (c) { return { role: c.role, content: c.content } }) }) })
+      var j = await r.json().catch(function () { return {} })
+      if (r.ok && j.reply) { busy = false; await say(j.reply) }
+      else if (j.error === 'brain_offline') { busy = false; chat.pop(); chat.push({ role: 'user', content: text }); if (!(await local(text))) await say(tx().brainOff) }
+      else { busy = false; await say(j.message || (L.lang === 'ar' ? 'حصلت مشكلة، جرب تاني.' : 'Something went wrong, please try again.')) }
+    } catch (e) { busy = false; await say(L.lang === 'ar' ? 'في مشكلة في الشبكة.' : 'Network problem.') }
+    busy = false; setState('idle'); if (L.live && L.started && tab === 'chat') setTimeout(listen, 500)
+  }
+
+  // proactive: while NOUR is open she watches for new items and speaks up on her own
+  function startWatch() {
+    clearInterval(L.poll)
+    L.poll = setInterval(async function () {
+      if (!L.started || document.hidden || busy || L.state === 'speaking' || !isHR) return
+      var o = await gather(); var prev = L.seen || { apps: 0, cases: 0 }; L.last = o
+      if (o.apps > prev.apps) { L.seen = { apps: o.apps, cases: o.cases }; await say(tx().newApp) }
+      else if (o.cases > prev.cases) { L.seen = { apps: o.apps, cases: o.cases }; await say(tx().newCase) }
+      else L.seen = { apps: o.apps, cases: o.cases }
+    }, 60000)
+  }
+
+  function vChat(main) {
+    var wrap = h('div', { class: 'live' }), av = avatarSVG()
+    var st = h('div', { id: 'nst', class: 'nst' }), list = h('div', { id: 'nlist', class: 'msgs' })
+    var inp = h('textarea', { id: 'nin', dir: 'auto', placeholder: L.lang === 'ar' ? 'اكتب أو اتكلم…' : 'Type or speak…', maxlength: '2000' })
+    var send = h('button', { class: 'p' }, L.lang === 'ar' ? 'إرسال' : 'Send')
+    var mic = h('button', { class: 's', title: 'Mic' }, '🎙'), live = h('button', { class: 's' }, L.live ? 'Live: on' : 'Live: off'), lang = h('button', { class: 's' }, L.lang === 'ar' ? 'عربي' : 'EN'), mute = h('button', { class: 's' }, L.mute ? 'Voice: off' : 'Voice: on')
+    var start = h('button', { class: 'p big' }, tx().start)
+    chat.forEach(function (c) { list.appendChild(h('div', { class: 'm ' + (c.role === 'user' ? 'u' : c.sys ? 'sys' : 'n'), dir: 'auto' }, c.content)) })
+    function go() { var t = inp.value.trim(); if (!t) return; inp.value = ''; if (!L.started) { L.started = true; startWatch() } handle(t) }
+    send.addEventListener('click', go); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go() } })
+    mic.addEventListener('click', function () { if (!SR) { addMsg('assistant', 'This browser has no voice input. Use Chrome or Edge.', true); return } L.started = true; startWatch(); if (L.state === 'listening') stopListening(); else listen() })
+    live.addEventListener('click', function () { L.live = !L.live; live.textContent = L.live ? 'Live: on' : 'Live: off'; if (L.live) listen(); else stopListening() })
+    lang.addEventListener('click', function () { L.lang = L.lang === 'ar' ? 'en' : 'ar'; stopListening(); stopSpeaking(); render() })
+    mute.addEventListener('click', function () { L.mute = !L.mute; mute.textContent = L.mute ? 'Voice: off' : 'Voice: on'; if (L.mute) stopSpeaking() })
+    start.addEventListener('click', function () { L.started = true; start.parentNode.style.display = 'none'; startWatch(); briefing() })
+    wrap.appendChild(av); wrap.appendChild(st)
+    if (!L.started) wrap.appendChild(h('div', { class: 'center' }, start, h('div', { class: 'priv' }, 'One tap lets the browser play her voice. After that she talks on her own.')))
+    wrap.appendChild(list)
+    wrap.appendChild(h('div', { class: 'row ctl' }, mic, live, lang, mute))
+    wrap.appendChild(h('div', { class: 'compose' }, inp, send))
+    wrap.appendChild(h('div', { class: 'priv' }, 'Chats are not stored. Actions NOUR takes are logged. She never approves or executes anything for you.'))
+    main.appendChild(wrap); setState(L.state); setMouth(0); setTimeout(function () { list.scrollTop = list.scrollHeight }, 0)
   }
 
   // ---------- my HR ----------
