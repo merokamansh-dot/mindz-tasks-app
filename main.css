@@ -827,3 +827,7 @@ button.hh-kpi:hover{transform:translateY(-2px);border-color:var(--brand)}
 .wr-ack textarea{width:100%}
 @media(max-width:600px){.wr-hero{padding:18px}.wr-hero h2{font-size:1.4rem}.wr-two,.wr-comps,.wr-focus,.wr-kudos,.wr-msg{margin-left:12px;margin-right:12px}.wr-two{padding:8px 0}.wr-add select{min-width:0;width:100%}}
 @media print{body.wr-printing *{visibility:hidden!important}body.wr-printing .wr-report,body.wr-printing .wr-report *{visibility:visible!important}body.wr-printing .wr-report{position:absolute;left:0;top:0;width:100%;box-shadow:none;border:0}body.wr-printing .wr-hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}body.wr-printing .wr-bar i,body.wr-printing .wr-ring{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.wr-cgrp h4{margin:12px 0 2px;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-dark)}
+.wr-ctype{margin-left:8px;font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;vertical-align:middle}
+.wr-ctype.pro{background:var(--brand-tint);color:var(--brand-dark)}.wr-ctype.comm{background:#e7f6f4;color:#0f766e}.wr-ctype.behav{background:#f1e9fb;color:#6b3fa0}
+[data-theme=dark] .wr-ctype.comm{background:#0f2b28;color:#5fd4c6}[data-theme=dark] .wr-ctype.behav{background:#2a1d3d;color:#c9a7f2}
