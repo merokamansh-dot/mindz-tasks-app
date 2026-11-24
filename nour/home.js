@@ -28,7 +28,12 @@
       if (!state.ws) { var m = await sb.from('workspace_members').select('workspace_id').eq('user_id', uid).limit(1); if (m.error || !m.data || !m.data.length) return; state.ws = m.data[0].workspace_id }
       var r = await sb.rpc('nour_welcome_status', { p_ws: state.ws }); if (r.error || !r.data) { state.status = null; return }
       state.status = r.data
-      if (state.expanded === null) state.expanded = !r.data.dismissed
+      if (state.expanded === null) {
+        state.expanded = !r.data.dismissed
+        // Show once: after the first expanded display to a real employee (published, not the Director's preview),
+        // record it at once, so later logins show only the slim bar with "Show welcome" to replay it.
+        if (state.expanded && r.data.published) mark('dismiss')
+      }
     } catch (e) { state.status = null } finally { state.loading = false; ensure() }
   }
   function mark(what) { var t = token(); if (!t || !state.ws) return; try { client(t.access_token).rpc('nour_welcome_mark', { p_ws: state.ws, p_what: what }) } catch (e) { /* non-critical */ } }
