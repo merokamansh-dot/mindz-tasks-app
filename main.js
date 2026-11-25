@@ -4249,8 +4249,8 @@ function FxList(p) {
           h("span", { className: "file-kind" }, Zb(f.name)),
           f.with_ref && !f.is_final && h("span", { className: "fx-tag", title: "Uploaded with a " + (p.scope === "task" ? "note" : "comment") }, p.scope === "task" ? "in a note" : "in a comment"),
           h("button", { type: "button", className: "link file-name", onClick: () => p.onDownload(f), "aria-label": "Download " + f.name }, f.name),
-          h("span", { className: "hint fx-meta", title: dh(f.created_at) }, es(f.size_bytes) + " · " + p.who(f.uploaded_by) + " · " + new Date(f.created_at).toLocaleTimeString("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit" })),
-          mine && h("button", { type: "button", className: "link fx-mv", "data-testid": f.is_final ? "fx-unfinal" : "fx-final", disabled: p.busy, onClick: () => p.onMove(f) }, f.is_final ? "← Back to Files" : "Mark as final →"),
+          h("span", { className: "hint fx-meta", title: dh(f.created_at) }, es(f.size_bytes) + " · " + p.who(f.uploaded_by) + " · " + new Date(f.created_at).toLocaleTimeString("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit" }) + (f.is_final && f.final_by ? " · final by " + p.who(f.final_by) : "")),
+          p.canAdd && h("button", { type: "button", className: "link fx-mv", "data-testid": f.is_final ? "fx-unfinal" : "fx-final", disabled: p.busy, onClick: () => p.onMove(f) }, f.is_final ? "← Back to Files" : "Mark as final →"),
           mine && h("button", { type: "button", className: "link", "aria-label": "Remove " + f.name, disabled: p.busy, onClick: () => p.onRemove(f) }, "remove"))];
     }));
 }
@@ -4289,7 +4289,7 @@ function FxFiles(p) {
   const box = (pend, setPend, final, label) => p.canAdd && h("div", { className: "noprint fx-up" },
     h(Wc, { files: pend, onChange: setPend, disabled: busy, label }),
     pend.length > 0 && h("div", { className: "actions left" }, h("button", { type: "button", className: "btn btn-primary", "data-testid": final ? "fx-up-final" : "fx-up-files", disabled: busy, onClick: () => upload(pend, final) }, busy ? (msg || "Uploading…") : "Upload " + pend.length + " " + (final ? "final document" : "file") + (pend.length > 1 ? "s" : ""))));
-  const listProps = { scope, who, canManage, busy, onDownload: download, onMove: move, onRemove: setDel };
+  const listProps = { scope, who, canManage, canAdd: p.canAdd, busy, onDownload: download, onMove: move, onRemove: setDel };
   const body = (arr, empty, label) => q.loading ? h(Jn, { label: "Loading files…" }) : q.error ? h(Kn, { message: q.error, onRetry: () => q.reload() }) : arr.length === 0 ? h("p", { className: "hint" }, empty) : h(FxList, { ...listProps, files: arr, label });
   return h(la.Fragment, null,
     h(pt, { title: "Final Documents (" + finals.length + ")", className: "fx-card fx-final-card" },
