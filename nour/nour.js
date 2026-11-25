@@ -438,7 +438,7 @@
   }
   function fallbackText(text) {
     var ar = /[؀-ۿ]/.test(text); L.fbN = (L.fbN || 0) + 1
-    if (isDir) return ar ? 'تحت أمرك. الأوامر اللي أنفذها دلوقتي: "اتعلمي ..." (أحفظ قاعدة أو معلومة)، "اتعلمتي ايه؟" (اللي لاحظته في السيستم)، "الاجازات المستنية"، "وافقي/ارفضي على اجازة <الاسم>"، "فكريني ..." ورصيد الإجازات وشرح أي قسم. الأوامر الحرة المعقدة محتاجة تشغيل العقل الكامل (AI) وده لسه مش متفعل.' : 'At your service. Orders I can carry out now: "remember that ...", "what did you learn?", "pending leave", "approve/reject <name>’s leave", "remind me to ...", leave balances and explaining any section. Complex free-form orders need the full AI brain, which is not switched on yet.'
+    if (isDir) return ar ? 'تحت أمرك. الأوامر اللي أنفذها دلوقتي: "اتعلمي ..." (أحفظ قاعدة أو معلومة)، "اتعلمتي ايه؟" (اللي لاحظته في السيستم)، "الاجازات المستنية"، "وافقي/ارفضي على اجازة <الاسم>"، "فكريني ..." ورصيد الإجازات وشرح أي قسم. الأوامر الحرة المعقدة محتاجة العقل الكامل، وهو مشغول لحظة. ابعتها تاني كمان شوية.' : 'At your service. Orders I can carry out now: "remember that ...", "what did you learn?", "pending leave", "approve/reject <name>’s leave", "remind me to ...", leave balances and explaining any section. Complex free-form orders need the full AI brain, which is busy for a moment. Please send it again in a few seconds.'
     if (ar) return L.fbN % 2 ? 'مش متأكدة فهمت قصدك. تقدر تسألني عن شرح أي قسم في Z Cloud (التاسكات، البريفات، الـCRM، المبيعات، المصاريف، الإيميل، الـHR Suite)، أو عن رصيد إجازاتك، أو تقولي مثلاً: إجازة اعتيادية من 15-12 لـ 30-12.' : 'لسه مش فاهمة بالظبط. جرّب تصيغها بشكل تاني، مثلاً: "ازاي أضيف تاسك؟" أو "رصيد إجازاتي" أو "ازاي أقدم مصروف؟".'
     return L.fbN % 2 ? 'I am not sure I got that. You can ask me how any part of Z Cloud works (tasks, briefs, CRM, sales, expenses, mail, the HR Suite), ask about your leave balance, or say for example: annual leave from 15-12 to 30-12.' : 'I still did not catch it. Try wording it differently, for example: "how do I add a task?", "my leave balance" or "how do I submit an expense?".'
   }
@@ -448,8 +448,9 @@
     addMsg('user', text); setState('thinking')
     try {
       var tok = (await sb.auth.getSession()).data.session.access_token
-      var r = await fetch(C.url + '/functions/v1/nour-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ workspace_id: ws, messages: chat.filter(function (c) { return !c.sys }).slice(-20).map(function (c) { return { role: c.role, content: c.content } }) }) })
-      var j = await r.json().catch(function () { return {} })
+      var callBrain = async function () { var rr = await fetch(C.url + '/functions/v1/nour-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok, apikey: C.anonKey }, body: JSON.stringify({ workspace_id: ws, messages: chat.filter(function (c) { return !c.sys }).slice(-20).map(function (c) { return { role: c.role, content: c.content } }) }) }); return { r: rr, j: await rr.json().catch(function () { return {} }) } }
+      var cb = await callBrain(), r = cb.r, j = cb.j
+      if (j.error === 'brain_offline' && j.reason && j.reason !== 'sensitive_local') { await new Promise(function (ok) { setTimeout(ok, 5000) }); cb = await callBrain(); r = cb.r; j = cb.j }
       if (r.ok && j.reply) { busy = false; await say(j.reply) }
       else if (j.error === 'brain_offline') { busy = false; chat.pop(); chat.push({ role: 'user', content: text }); L.viaKb = 0; var okL = await local(text)
         if (!okL) { logUnanswered(text); var fb = fallbackText(text), arT = /[؀-ۿ]/.test(text); logReview(text, fb, 'pending')
