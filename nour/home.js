@@ -102,7 +102,7 @@
     if (!state.expanded) {
       sec.appendChild(h('div', { class: 'nw-bar' }, h('img', { src: (window.__nourPortrait || base + 'nour-portrait.jpg'), alt: '' }), h('span', {}, 'NOUR, your People & Culture Partner'),
         h('button', { class: 'nw-s', type: 'button', on: { click: function () { state.expanded = true; mark('undismiss'); rebuild() } } }, 'Show welcome'),
-        talkBtn('nw-s', base), chatBtn('nw-p', base)))
+        chatBtn('nw-p', base)))
       if (panel && !panel.hidden) sec.appendChild(panel)
       return sec
     }
@@ -123,13 +123,13 @@
       try { vidBox.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }) } catch (e) { /* ignore */ }
     }
     var meet = h('button', { class: 'nw-p', type: 'button', on: { click: function () { openVideo(true) } } }, 'Meet NOUR')
-    var talk = talkBtn('nw-s', base), chat = chatBtn('nw-s', base)
+    var chat = chatBtn('nw-s', base)
     var hide = h('button', { class: 'nw-q', type: 'button', on: { click: function () { state.expanded = false; mark('dismiss'); rebuild() } } }, 'Hide this for now')
     sec.appendChild(h('div', { class: 'nw-hero' },
       h('div', { class: 'nw-copy' }, h('div', { class: 'nw-eyebrow' }, 'New at MINDz'),
         h('h2', { id: 'nw-h' }, 'Meet NOUR — Your People & Culture Partner'),
         h('p', { class: 'nw-sub' }, 'Your AI-powered HR companion, here to make your work experience at MINDz easier.'),
-        h('div', { class: 'nw-btns' }, meet, talk, chat, hide)),
+        h('div', { class: 'nw-btns' }, meet, chat, hide)),
       h('div', { class: 'nw-face' }, h('img', { src: (window.__nourPortrait || base + 'nour-portrait.jpg'), alt: 'NOUR, MINDz AI People and Culture partner', width: '260', height: '260' }), h('div', { class: 'nw-tag' }, h('b', {}, 'NOUR'), ' · AI assistant'))))
     if (panel && !panel.hidden) sec.appendChild(panel)
     sec.appendChild(vidBox)
