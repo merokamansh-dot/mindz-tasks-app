@@ -5506,6 +5506,49 @@ dompurify/dist/purify.cjs.js:
     })
   }
 
+
+  // ---------- NOUR member profile: post and react as NOUR (Director only) ----------
+  var NOUR_UID = '4e4f5552-0000-4000-8000-000000000001', REACTS = ['\u{1F44D}', '❤️', '\u{1F44F}', '\u{1F389}', '\u{1F525}', '\u{1F602}', '\u{1F64F}']
+  async function nourProfileCard(main) {
+    var mc = await sb.from('member_cards').select('job_title,about,department,languages').eq('workspace_id', ws).eq('user_id', NOUR_UID).maybeSingle(), c = mc.data || {}
+    var pr = await sb.from('announcements').select('id,kind,title,body,pinned,created_at,created_by').eq('workspace_id', ws).order('created_at', { ascending: false }).limit(6)
+    var rx = pr.data && pr.data.length ? await sb.from('announcement_reactions').select('announcement_id,emoji').eq('workspace_id', ws).eq('user_id', NOUR_UID).in('announcement_id', pr.data.map(function (x) { return x.id })) : { data: [] }
+    var mine = {}; (rx.data || []).forEach(function (r) { mine[r.announcement_id + r.emoji] = true })
+    var out = h('div', {}), card = h('div', { class: 'card' })
+    card.appendChild(h('h3', {}, 'NOUR on Z Cloud'))
+    card.appendChild(h('div', { class: 'row' }, h('img', { src: EMB ? EMB.portrait : 'nour-portrait.jpg', alt: 'NOUR', style: 'width:56px;height:56px;border-radius:50%;object-fit:cover' }),
+      h('div', { style: 'flex:1' }, h('b', {}, 'NOUR'), h('div', { class: 'mut' }, (c.job_title || 'People & Culture Manager (AI)') + ' · ' + (c.languages || 'Arabic, English')), h('div', { class: 'mut' }, 'Member of the team. Posts and reactions below appear under her name.')),
+      h('span', { class: 'pill ' + (settings.enabled && !settings.paused ? 'ok' : 'bad') }, settings.enabled ? (settings.paused ? 'Paused' : 'Active') : 'Off')))
+    var ti = h('input', { dir: 'auto', maxlength: '80', value: c.job_title || '' }), ab = h('textarea', { dir: 'auto', maxlength: '600' })
+    ab.value = c.about || ''
+    card.appendChild(h('details', { style: 'margin-top:8px' }, h('summary', {}, 'Edit profile'), h('label', {}, 'Job title'), ti, h('label', {}, 'About'), ab,
+      h('div', { class: 'row', style: 'margin-top:6px' }, btn('Save profile', 'p', async function () { var x = await sb.rpc('nour_profile_set', { p_ws: ws, p_title: ti.value, p_about: ab.value }); clear(out); out.appendChild(x.error ? msg('err', x.error.message) : msg('ok', 'Profile saved.')) }))))
+    // composer
+    var kind = h('select', {}, ['announcement', 'dedication', 'message'].map(function (k) { return h('option', { value: k }, k) })), tt = h('input', { dir: 'auto', maxlength: '120', placeholder: 'Title (optional)' }), bd = h('textarea', { dir: 'auto', maxlength: '1950', placeholder: 'Write the post. It will appear on Home as NOUR.' }), pin = h('input', { type: 'checkbox', style: 'width:auto' })
+    card.appendChild(h('h4', { style: 'margin:14px 0 6px' }, 'Post to Home as NOUR'))
+    card.appendChild(h('div', {}, kind, tt, bd, h('div', { class: 'row', style: 'margin-top:6px' }, h('label', { class: 'row' }, pin, ' Pin it'), h('span', { class: 'sp' }),
+      btn('Publish as NOUR', 'p', async function () {
+        if (!bd.value.trim()) { clear(out); out.appendChild(msg('err', 'Write something first.')); return }
+        var x = await sb.rpc('nour_home_post', { p_ws: ws, p_kind: kind.value, p_title: tt.value, p_body: bd.value, p_pinned: pin.checked }); clear(out)
+        if (x.error) out.appendChild(msg('err', x.error.message)); else { out.appendChild(msg('ok', 'Published on Home as NOUR.')); bd.value = ''; tt.value = ''; pin.checked = false; setTimeout(render, 900) }
+      }))))
+    card.appendChild(out)
+    // react as NOUR
+    card.appendChild(h('h4', { style: 'margin:14px 0 6px' }, 'Latest Home posts: react as NOUR'))
+    ;(pr.data || []).forEach(function (a) {
+      var rr = h('div', { class: 'row', style: 'flex-wrap:wrap;gap:4px' })
+      REACTS.forEach(function (e) {
+        var on = !!mine[a.id + e]
+        rr.appendChild(h('button', { class: on ? 'p' : 's', title: on ? 'Remove' : 'React', on: { click: async function () { var x = await sb.rpc('nour_react', { p_ws: ws, p_announcement: a.id, p_emoji: e, p_on: !on }); if (x.error) { clear(out); out.appendChild(msg('err', x.error.message)) } else { mine[a.id + e] = !on; this.className = on ? 's' : 'p'; this.title = on ? 'React' : 'Remove'; on = !on } } } }, e))
+      })
+      card.appendChild(h('div', { style: 'margin:6px 0;padding:8px;border:1px solid var(--bd,#2a2a3a);border-radius:10px' },
+        h('div', { class: 'mut' }, (a.pinned ? 'Pinned · ' : '') + a.kind + ' · ' + nm(a.created_by) + ' · ' + new Date(a.created_at).toLocaleDateString()),
+        h('div', {}, (a.title ? a.title + ': ' : '') + (a.body || '').replace(/\s+/g, ' ').slice(0, 140) + ((a.body || '').length > 140 ? '…' : '')), rr))
+    })
+    if (!(pr.data || []).length) card.appendChild(h('div', { class: 'mut' }, 'No posts on Home yet.'))
+    main.appendChild(card)
+  }
+
   // ---------- Director control ----------
   async function vAdmin(main) {
     main.appendChild(h('div', { class: 'boot' }, 'Loading…'))
@@ -5516,6 +5559,7 @@ dompurify/dist/purify.cjs.js:
     main.appendChild(h('div', { class: 'card' }, h('h3', {}, 'Control'), h('div', { class: 'row' }, h('span', { class: 'pill ' + (settings.enabled && !settings.paused ? 'ok' : 'bad') }, settings.enabled ? (settings.paused ? 'Paused' : 'Running') : 'Off'), h('span', { class: 'sp' }),
       h('button', { class: settings.paused ? 'p' : 'd', on: { click: function () { patch({ paused: !settings.paused }, settings.paused ? 'Resumed' : 'Paused') } } }, settings.paused ? 'Resume NOUR' : 'Pause NOUR')),
       h('div', { style: 'margin-top:8px' }, out)))
+    await nourProfileCard(main)
     var cst = await sb.rpc('nour_complaints_status', { p_ws: ws }), cd = cst.data || {}, cout = h('div', {})
     function chk(ok, t) { return h('div', { class: 'row' }, h('span', { class: 'pill ' + (ok ? 'ok' : 'bad') }, ok ? 'OK' : 'Missing'), h('span', { class: 'mut' }, t)) }
     async function setAct(v) { var x = await sb.rpc('nour_complaints_set_active', { p_ws: ws, p_active: v }); clear(cout); if (x.error) cout.appendChild(msg('err', x.error.message)); else { cout.appendChild(msg('ok', v ? 'Confidential complaints are now active.' : 'Confidential complaints are switched off.')); var s2 = await sb.from('nour_settings').select('*').eq('workspace_id', ws).maybeSingle(); settings = s2.data || settings; setTimeout(render, 700) } }
