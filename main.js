@@ -4965,6 +4965,7 @@ dompurify/dist/purify.cjs.js:
     })
   }
   async function say(text) {
+    if (!L.mute && text && text.length > 20) await new Promise(function (r) { setTimeout(r, Math.min(900, 250 + text.length * 3)) })
     addMsg('assistant', text)
     if (L.mute) return
     stopSpeaking(); setState('speaking')
@@ -5178,13 +5179,33 @@ dompurify/dist/purify.cjs.js:
     // 6) taught notes (only when asked about something the Director taught)
     return false
   }
+  // ---------- humanised small talk: warm, varied, honest about being an AI ----------
+  function pick(a) { L.pk = L.pk || {}; var key = a[0]; var i = ((L.pk[key] = ((L.pk[key] == null ? Math.floor(Math.random() * a.length) : L.pk[key] + 1))) % a.length); return a[i] }
+  function dayPart() { var h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' })).getHours(); return h < 5 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'noon' : 'evening' }
+  async function human(text, ar, q) {
+    var fn = firstName(), qt = q.trim()
+    if (/^(ازيك|ازيك يا نور|عامله ايه|عامل ايه|اخبارك|اخبارك ايه|how are you|how.?s it going|how do you do)(?=\s|$|[:،,.!؟?])/.test(qt) || /^(نور[\s،,]+)?(ازيك|عامله ايه|اخبارك)/.test(qt)) {
+      await say(ar ? pick(['الحمد لله تمام، شكراً إنك سألت يا ' + fn + '. إنت عامل إيه؟ في حاجة أقدر أساعدك فيها؟', 'تمام والحمد لله. يومك ماشي إزاي يا ' + fn + '؟', 'أنا بخير، شكراً ليك. قولي، إيه الأخبار عندك؟']) : pick(['I am doing well, thank you for asking, ' + fn + '. How are you? Anything I can help with?', 'Good, thanks. How is your day going, ' + fn + '?'])); return true }
+    if (/(تعبان|تعبانه|تعبت|مضغوط|مضغوطه|زهقان|زهقانه|مخنوق|مخنوقه|مرهق|مرهقه|يوم وحش|مش قادر|مش قادره|ضغط الشغل|حاسس بضغط|حاسه بضغط|stressed|burn(ed|t)? ?out|exhausted|overwhelmed|having a (bad|rough|hard) day|so tired|fed up)/.test(q)) {
+      await say(ar ? pick(['معلش يا ' + fn + '، أنا حاسة بيك، وده بيحصل مع أي حد. خد نفس وقولي إيه اللي مضايقك أكتر حاجة؟ لو الموضوع شغل أقدر أساعدك نرتبه، ولو محتاج يوم راحة أقدملك طلب إجازة دلوقتي، ولو في حد أو موقف مضايقك تقدر تبلّغ بشكل سري من تبويب "Confidential".', 'سلامتك يا ' + fn + '، واضح إن اليوم تقيل عليك. احكيلي إيه اللي حاصل وأنا هنا أسمعك. ولو عايز نظبط الشغل أو تاخد إجازة قولي وأنا أظبطها معاك، ولو الموضوع بيخص حد أو موقف في الشغل في تبويب "Confidential" بتبلّغ بشكل سري.']) : pick(['I am sorry, ' + fn + ', that sounds heavy. Tell me what is weighing on you most. If it is workload I can help you sort it out, if you need a break I can prepare a leave request, and if it is about a person or a situation you can raise it privately under the Confidential tab.', 'That sounds like a tough day, ' + fn + '. I am here, so tell me what happened. I can help with your workload or a leave request, and you can use the Confidential tab for anything about a person or situation.'])); return true }
+    if (/^(?:نور[\s،,]+)?(مع السلامه|سلام|باي|تصبح على خير|الى اللقاء|يلا سلام|bye|goodbye|see you|good night|talk later)(?=\s|$|[:،,.!؟?])/.test(qt)) {
+      await say(ar ? pick(['مع السلامة يا ' + fn + '، وأنا موجودة في أي وقت.', 'تمام، يومك جميل، ولو احتجت حاجة أنا هنا.']) : pick(['Take care, ' + fn + '. I am here whenever you need me.', 'Bye for now, have a good one.'])); return true }
+    if (/(برافو|شاطره|ممتاز|تمام كده|ايه الحلاوه|عظيمه|احسنتي|good job|well done|great job|nice work|you.?re (great|amazing|good|helpful)|very helpful)/.test(q) && qt.split(/\s+/).length <= 8) {
+      await say(ar ? pick(['شكراً ليك، كلامك بيفرحني. بحاول أتحسن كل يوم، ولو في حاجة غلط قولي وأنا أتعلمها.', 'ده من ذوقك يا ' + fn + '. أنا بتعلم من تصحيحاتكم أكتر من أي حاجة.']) : pick(['Thank you, that is kind. I learn from corrections, so tell me whenever I get something wrong.', 'That means a lot, ' + fn + '. Keep the feedback coming.'])); return true }
+    if (/(انتي بني ادم|انتي انسان|انتي روبوت|انتي حقيقيه|انتي بشر|انتي ذكاء|are you (a )?(human|robot|real|person|bot)|am i (talking|speaking) to a (human|person|robot))/.test(q)) {
+      await say(ar ? 'أنا مساعدة بالذكاء الاصطناعي، مش بني آدمة، وبقولها لك بصراحة. بس بحاول أبقى قريبة منكم وأشتغل زي مديرة موارد بشرية حقيقية. وأي حاجة محتاجة قرار بشري بوصلها لأمير.' : 'I am an AI assistant, not a person, and I would rather say it plainly. I try to work like a good HR manager and I pass anything that needs a human decision to Amir.'); return true }
+    if (/(نكته|احكيلي نكته|قوليلي نكته|joke|make me laugh)/.test(q)) {
+      await say(ar ? pick(['واحد سأل مديره: ممكن آخد إجازة؟ قاله: طبعاً، بس قدم الطلب في Z Cloud. قاله: ده أنا لسه هقول حاجة! قاله: وأنا لسه هوافق!', 'ليه الإيميل زعلان؟ عشان حد كتب فيه "تحياتي" ومحدش رد عليه']) : 'Why did the employee bring a ladder to the review? They heard the goal was to reach new heights.'); return true }
+    return false
+  }
   var VARI = { ar: ['تحب أشرحلك حاجة تانية في Z Cloud؟', 'لو في حاجة تانية قولي.', 'عايز تعرف حاجة كمان؟'], en: ['Want me to explain anything else in Z Cloud?', 'Tell me if you need anything else.', 'Anything else you would like to know?'] }
   async function local(text) {
     var ar = /[؀-ۿ]/.test(text), q = nrm(text), t = T[ar ? 'ar' : 'en']
     if (await leaveFlow(text, ar)) return true
     if (await dirCmd(text, ar, q)) return true
-    if (/^(مرحبا|اهلا|هاي|هلا|صباح|مساء|السلام|hi\b|hello|hey|good (morning|evening))/.test(q.trim())) { await say(isDir ? (ar ? 'أهلاً يا ' + firstName() + '، أنا نور. تحت أمرك، اطلب أي حاجة وأنا أنفذها، وأي قرار يخصني هرجعلك فيه.' : 'Hello ' + firstName() + ', I am NOUR. At your service: tell me what you need and I will carry it out, and I will come back to you on anything that needs your decision.') : t.hello(firstName()) + (ar ? 'تحب أساعدك في إيه؟' : 'How can I help?')); return true }
-    if (/شكرا|thank/.test(q)) { await say(ar ? 'العفو، أنا موجودة.' : 'Anytime.'); return true }
+    if (await human(text, ar, q)) return true
+    if (/^(مرحبا|اهلا|هاي|هلا|صباح|مساء|السلام|hi\b|hello|hey|good (morning|evening))/.test(q.trim())) { await say(isDir ? (ar ? 'أهلاً يا ' + firstName() + '، أنا نور. تحت أمرك، اطلب أي حاجة وأنا أنفذها، وأي قرار يخصني هرجعلك فيه.' : 'Hello ' + firstName() + ', I am NOUR. At your service: tell me what you need and I will carry it out, and I will come back to you on anything that needs your decision.') : (ar ? (({ morning: 'صباح الخير', noon: 'أهلاً', evening: 'مساء الخير', night: 'أهلاً' })[dayPart()]) + ' يا ' + firstName() + '! أنا نور. ' + pick(['تحب أساعدك في إيه؟', 'قولي إيه اللي تحتاجه النهارده.', 'إزاي أقدر أساعدك؟']) : t.hello(firstName()) + 'How can I help?')); return true }
+    if (/شكرا|thank/.test(q)) { await say(ar ? pick(['العفو يا ' + firstName() + '، دي مهمتي.', 'ولا يهمك، أنا موجودة.', 'تحت أمرك في أي وقت.']) : pick(['Anytime, ' + firstName() + '.', 'You are welcome. I am here if you need anything else.'])); return true }
     if (/مين مديرك|مين مديرتك|مين رئيسك|مين بيديك اوامر|who.?s your (manager|boss)|who is your (manager|boss)|who do you (report|work) (to|for)/.test(q)) { await say(isDir ? (ar ? 'إنت مديري يا ' + firstName() + '. بترجعلك في أي قرار، وبنفذ اللي تأمرني بيه في حدود صلاحياتي.' : 'You are my manager, ' + firstName() + '. I come back to you on any decision and carry out what you instruct within my permissions.') : (ar ? 'مديري هو ' + dirName() + '، مدير الشركة. بنفذ تعليماته وبرجعله في القرارات المهمة، والقرار النهائي للإدارة.' : 'My manager is ' + dirName() + ', the company Director. I follow his instructions and go back to him on important decisions; final decisions stay with management.')); return true }
     if (/مين انت|انتي مين|انت مين|who are you|what are you/.test(q)) { await say(isDir ? (ar ? 'أنا نور، مديرة الموارد البشرية في مايندز، وإنت مديري. بنفذ أوامرك وبتابع السيستم يوميًا عشان أفضل فاهمة الشغل.' : 'I am NOUR, MINDz’s HR manager, and you are my manager. I carry out your instructions and follow the system daily so I keep understanding the work.') : ar ? 'أنا نور، مديرة الموارد البشرية في مايندز. أنا ذكاء اصطناعي: بجهز وبنسق، والقرارات النهائية للإدارة.' : 'I am NOUR, MINDz’s HR manager. I am an AI: I prepare and coordinate, and final decisions stay with management.'); return true }
     var o = null
